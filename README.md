@@ -1,1 +1,276 @@
-# work-pixelclock
+# work-pixelclock – Pixel Panel für Windows
+
+Ein Windows-Programm (`PixelPanel.exe`), das ein **iPixel-Color-LED-Panel per Bluetooth** steuert
+und die Handy-App „iPixels“ komplett ersetzt. Neben Text, Emojis, Bildern und Uhren zeigt es
+deinen **Microsoft-Teams-Status als Statuslicht** und deine **Claude-Nutzung** (Sitzung und Woche)
+direkt auf dem Panel an.
+
+![Panel-Seiten](docs/images/seiten.png)
+
+Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichentafel, Artikel 3226274):
+64 × 16 RGB-LEDs, Strom über USB, Bluetooth-Name `LED_BLE_…`. Andere iPixel-Color-Panels
+(32 × 16 bis 448 × 32) sprechen dasselbe Protokoll; die Größe liest das Programm aus dem Panel.
+
+---
+
+## Inhalt
+
+- [Funktionen](#funktionen)
+- [Schnellstart](#schnellstart)
+- [Bedienung](#bedienung)
+- [Teams-Statuslicht](#teams-statuslicht)
+- [Claude-Nutzung](#claude-nutzung)
+- [Wetter](#wetter)
+- [Einstellungen und Dateien](#einstellungen-und-dateien)
+- [Fehlerbehebung](#fehlerbehebung)
+- [Entwicklung](#entwicklung)
+- [Wie es funktioniert](#wie-es-funktioniert)
+- [Herkunft und Danksagung](#herkunft-und-danksagung)
+
+---
+
+## Funktionen
+
+| Bereich | Was geht |
+|---|---|
+| **Sofort anzeigen** | Text mit Emoji oder Icon, eigene Farbe, Hintergrund-Effekt, für X Sekunden oder dauerhaft; Bild oder animiertes GIF; die 9 eingebauten Uhr-Designs des Panels |
+| **Seiten-Rotation** | Beliebig viele Seiten, die nacheinander durchlaufen: Uhr, Datum, Text/Emoji, Bild/GIF, Wetter, Teams-Status, Claude-Nutzung – jede mit eigener Anzeigedauer, per Haken an/aus, sortierbar |
+| **Teams-Statuslicht** | Bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
+| **Claude-Nutzung** | Prozent der 5-Stunden-Sitzung und des Wochenlimits deines Claude-Abos, farbig (grün/gelb/rot) |
+| **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
+| **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
+| **Panel** | An/aus, Helligkeit, Nachtmodus (zeitgesteuert dunkler), Ausrichtung inkl. hochkant |
+| **Programm** | Läuft im Hintergrund (Symbol in der Taskleiste), Start mit Windows, verbindet sich automatisch neu |
+
+<p>
+  <img src="docs/images/effekt-matrix.gif" alt="Matrix-Effekt" width="32%">
+  <img src="docs/images/effekt-fire.gif" alt="Feuer-Effekt" width="32%">
+  <img src="docs/images/effekt-snow.gif" alt="Schnee-Effekt" width="32%">
+</p>
+
+> **USB ist nur Strom.** Das Panel meldet sich am PC nicht als USB-Gerät an – gesteuert wird
+> ausschließlich über **Bluetooth Low Energy**. Der PC braucht also Bluetooth (eingebaut oder Stick).
+
+---
+
+## Schnellstart
+
+1. **Panel einstecken** (USB-Strom) und einschalten.
+2. **Handy-App schließen** bzw. Bluetooth am Handy aus – das Panel nimmt nur *eine* Verbindung an.
+3. `PixelPanel.exe` starten (siehe [Bauen](#exe-bauen), falls du noch keine hast).
+4. Beim ersten Start sucht das Programm automatisch nach Panels. Wird genau eins gefunden, verbindet
+   es sich sofort; sonst das gewünschte Panel oben auswählen und **Verbinden** klicken.
+5. Fertig – die Rotation startet mit Uhr und Claude-Nutzung; das Teams-Statuslicht ist aktiv.
+
+Das Panel muss **nicht** in den Windows-Bluetooth-Einstellungen gekoppelt werden.
+
+---
+
+## Bedienung
+
+### Oberer Bereich: Panel und Vorschau
+
+Verbindungsstatus, Panel-Auswahl (**Suchen** / **Verbinden**), **Panel an**, **Helligkeit** und
+**Ausrichtung**. Darunter eine Live-Vorschau dessen, was gerade auf dem Panel zu sehen ist – auch
+Animationen. **Nächste Seite ▶** springt in der Rotation weiter.
+
+### Tab „Sofort anzeigen“
+
+![Sofort anzeigen](docs/images/app-sofort.png)
+
+- **Text** eintippen, **Icon / Emoji** wählen (Liste aufklappen oder Emoji direkt einfügen),
+  Farbe und Effekt wählen, **Anzeigen** (oder Enter).
+- Ein Emoji *im Text* wird automatisch als Icon links angezeigt, z. B. `Bin gleich zurück ☕`.
+- Langer Text läuft als Laufschrift.
+- **Dauer** `0` = bleibt stehen, bis du **Zurück zur Rotation** klickst; sonst z. B. `60 s`.
+- **Als Seite in die Rotation** übernimmt den Text dauerhaft.
+- **Bild / GIF anzeigen…** – wird auf die Panelgröße verkleinert, GIFs laufen animiert.
+- **Eingebaute Uhr anzeigen** – eines der 9 Uhr-Designs, die das Panel selbst kann.
+
+### Tab „Seiten (Rotation)“
+
+![Seiten](docs/images/app-seiten.png)
+
+Links die Liste der Seiten: **Haken** = läuft in der Rotation mit, Reihenfolge per **▲ / ▼**,
+neue Seite über **+ Seite**. Rechts die Einstellungen der gewählten Seite:
+
+| Seite | Einstellungen |
+|---|---|
+| **Uhr** | Farbe, Effekt, Sekunden, Wochentag-Leiste |
+| **Uhr (eingebaut im Panel)** | Design 0–8, Datum an/aus – läuft im Panel selbst |
+| **Datum** | Farbe, Icon, Effekt |
+| **Text / Emoji** | Text, Icon/Emoji, Farbe, Effekt |
+| **Bild / GIF** | Datei |
+| **Wetter** | Farbe, Effekt (Ort unter *Einstellungen*) |
+| **Teams-Status** | farbiger Punkt + Status |
+| **Claude-Nutzung** | Sitzung + Woche, nur Sitzung oder nur Woche (mit Balken) |
+
+Laufschrift wird immer mindestens einmal komplett gezeigt, auch wenn die Anzeigedauer kürzer ist.
+
+**Icons:** Feld *Icon / Emoji* akzeptiert
+
+- ein Emoji, z. B. `🚀`
+- einen eingebauten Namen, z. B. `heart`, `house`, `coffee`, `bell`, `car`, `music`, `star` …
+- ein LaMetric-Icon: `lm:2867` (Nummer von [developer.lametric.com/icons](https://developer.lametric.com/icons))
+- eine Bilddatei (Knopf **…**)
+
+### Tab „Teams & Claude“
+
+![Teams und Claude](docs/images/app-teams-claude.png)
+
+### Tab „Einstellungen“
+
+![Einstellungen](docs/images/app-einstellungen.png)
+
+Nachtmodus (Zeitraum + Helligkeit), Wetter-Ort, **Mit Windows starten**, **Minimiert starten**.
+
+### Taskleisten-Symbol
+
+Das **X** am Fenster schließt nur das Fenster – das Panel wird weiter gesteuert. Über das Symbol
+in der Taskleiste (Rechtsklick): Öffnen, Nächste Seite, Zurück zur Rotation, Panel an/aus,
+Teams-Statuslicht an/aus, **Beenden**.
+
+---
+
+## Teams-Statuslicht
+
+![Teams-Status](docs/images/teams-status.png)
+
+*Links: Teams-Seite in der Rotation. Rechts: Statuslicht (ganzes Panel leuchtet).*
+
+- Der Status wird aus der **Logdatei des neuen Teams-Clients** gelesen
+  (`%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs\MSTeams_*.log`,
+  Zeilen `UserPresenceAction … availability: Busy`). Keine Anmeldung, keine Azure-App, keine
+  Admin-Rechte; geprüft wird alle 2 Sekunden.
+- Unter *Teams & Claude* legst du fest, **bei welchen Status** das Statuslicht angeht
+  (Standard: Beschäftigt, Im Anruf, Im Meeting, Am Telefon, Präsentiert, Nicht stören).
+  Bei allen anderen Status läuft die normale Rotation.
+- Priorität: **Sofort anzeigen** > **Statuslicht** > **Rotation**.
+- Grenzen: Funktioniert nur mit dem neuen Teams („Teams 2.0“) auf demselben PC. Während eines Anrufs
+  schreibt Teams meist nur „Beschäftigt“ ins Log. Da es keine offizielle Schnittstelle ist, kann ein
+  Teams-Update das Format ändern.
+
+---
+
+## Claude-Nutzung
+
+- Zeigt die Auslastung deines **Claude-Abos**: **Sitzung** (5-Stunden-Limit) und **Woche** –
+  dieselben Werte wie unter claude.ai › Einstellungen › Nutzung.
+- Voraussetzung: **Claude Code ist auf diesem PC angemeldet** (`claude` → `/login`). Das Programm
+  liest das Token aus `%USERPROFILE%\.claude\.credentials.json` und fragt
+  `api.anthropic.com/api/oauth/usage` ab (Standard alle 120 s). Das Token wird nur gelesen, nie
+  verändert oder weitergegeben.
+- Ist die Anmeldung abgelaufen, steht ein Hinweis auf dem Panel – einmal Claude Code öffnen genügt.
+- Farben: grün < 50 %, gelb < 80 %, rot ab 80 %.
+
+---
+
+## Wetter
+
+Unter *Einstellungen › Wetter* einen Ort eingeben und **Ort übernehmen**. Daten von
+[Open-Meteo](https://open-meteo.com) (kostenlos, kein API-Schlüssel), Aktualisierung alle 15 Minuten.
+Die Wetter-Seite zeigt Symbol, aktuelle Temperatur und Tiefst-/Höchstwert des Tages.
+
+---
+
+## Einstellungen und Dateien
+
+| Was | Wo |
+|---|---|
+| Einstellungen | `%APPDATA%\PixelPanel\config.json` (wird beim Ändern automatisch gespeichert) |
+| Log | `%APPDATA%\PixelPanel\pixelpanel.log` |
+| LaMetric-Icon-Cache | `%APPDATA%\PixelPanel\icons\` |
+| Autostart | Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\PixelPanel` |
+
+Zum Zurücksetzen Programm beenden und `config.json` löschen.
+
+---
+
+## Fehlerbehebung
+
+| Problem | Lösung |
+|---|---|
+| **Kein Panel gefunden** | Panel an? Handy-App geschlossen / Handy-Bluetooth aus? (Ein verbundenes Panel ist für andere unsichtbar.) Bluetooth am PC an? Näher ran. |
+| **„Panel nicht erreichbar – neuer Versuch läuft“** | Programm versucht es alle 15 s erneut. Panel kurz vom Strom trennen hilft meistens. |
+| **Handy-App verbindet nicht mehr** | Pixel Panel über das Taskleisten-Symbol **beenden** – dann ist das Panel wieder frei. |
+| **Teams-Status bleibt „noch kein Status“** | Nur der neue Teams-Client wird unterstützt. Status einmal in Teams ändern, dann taucht er im Log auf. |
+| **Claude: „Nicht in Claude Code angemeldet“ / „Anmeldung abgelaufen“** | Claude Code starten und ggf. `/login`. |
+| **„Pixel Panel läuft bereits“** | Es läuft schon eine Instanz – Symbol in der Taskleiste (ggf. unter ^). |
+| Sonstiges | `%APPDATA%\PixelPanel\pixelpanel.log` ansehen. |
+
+---
+
+## Entwicklung
+
+Voraussetzungen: Windows 10/11 mit Bluetooth LE, [uv](https://docs.astral.sh/uv/) (oder Python 3.13 + pip).
+
+```powershell
+git clone https://github.com/Nipo-98/work-pixelclock.git
+cd work-pixelclock
+uv venv --python 3.13 .venv
+uv pip install --python .venv\Scripts\python.exe -r requirements.txt
+
+.venv\Scripts\python.exe -m pixelpanel      # starten
+.venv\Scripts\python.exe -m pytest tests    # Tests
+```
+
+### .exe bauen
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build.ps1
+# -> dist\PixelPanel.exe  (eine Datei, ~50 MB, keine Installation nötig)
+```
+
+`build.ps1` legt bei Bedarf die virtuelle Umgebung an, erzeugt das Programm-Icon und baut mit
+PyInstaller (`--onefile --windowed`).
+
+### Projektstruktur
+
+```
+pixelpanel/
+  __main__.py     Start, Logging
+  gui.py          Fenster, Tabs, Vorschau, Taskleisten-Symbol (PySide6)
+  engine.py       Hintergrund-Thread: Verbindung, Rotation, Prioritäten, Senden
+  ble.py          Bluetooth-LE-Verbindung zum Panel (bleak), Upload mit ACKs
+  pages.py        Seite + Live-Daten -> Bild/GIF (Emojis, Icons, Teams, Claude, Wetter …)
+  sources.py      Teams-Log, Claude-Nutzung, Wetter (Open-Meteo)
+  config.py       Einstellungen (JSON in %APPDATA%\PixelPanel)
+  autostart.py    Start mit Windows (Registry, ohne Admin)
+  core/           Protokoll, Pixelschrift, Icons, Effekte, Zeichnen – aus ha-pixelclock
+tests/            pytest
+build.ps1         baut dist\PixelPanel.exe
+run.py            Einstiegspunkt für PyInstaller
+```
+
+---
+
+## Wie es funktioniert
+
+- **Protokoll:** Das Panel bietet den BLE-Dienst `0x00FA`. Befehle gehen an `FA02`, Antworten
+  kommen als Benachrichtigung auf `FA03`. Jeder Befehl ist `<Länge u16 LE><cmd><typ><daten>`.
+  Direkt unterstützt: Strom, Helligkeit, Uhrzeit, eingebaute Uhren, Ausrichtung – und das Hochladen
+  eines PNG/GIF in 12-KB-Fenstern, die das Panel einzeln bestätigt.
+- **Alles andere ist ein Bild:** Text, Laufschrift, Emojis, Effekte, Teams- und Claude-Anzeige werden
+  auf dem PC mit Pillow pixelgenau gezeichnet und als PNG (still) oder GIF (animiert) gesendet. Ein
+  animiertes GIF von ~20 KB ist in unter einer Sekunde übertragen; die Animation läuft danach im Panel
+  selbst weiter.
+- **Nur bei Änderungen senden:** Jede Seite hat eine „Signatur“ (z. B. Uhrzeit auf die Minute,
+  Teams-Status, Claude-Prozente). Nur wenn sie sich ändert, wird neu gesendet.
+- **Verbindung:** bleibt dauerhaft offen; bei Abbruch wird alle 15 s neu verbunden. Die Panel-Uhr
+  wird beim Verbinden und täglich gestellt.
+
+---
+
+## Herkunft und Danksagung
+
+Protokoll, Pixelschrift, Icons, Effekte und Zeichenfunktionen (`pixelpanel/core/`) stammen – mit
+Erlaubnis des Autors – aus
+[dominguez-posh/ha-pixelclock](https://github.com/dominguez-posh/ha-pixelclock), einer
+Home-Assistant-Integration für dieselben Panels. Dessen Protokoll basiert wiederum auf dem
+Reverse Engineering in [pypixelcolor](https://github.com/lucagoc/pypixelcolor) (MIT).
+
+Wetterdaten: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Icons optional von
+[LaMetric](https://developer.lametric.com/icons). Emojis: Windows-Schrift „Segoe UI Emoji“
+(wird zur Laufzeit vom System verwendet, nicht mitgeliefert).
+
+Nicht offiziell mit Action, Briloner, iPixels, Microsoft oder Anthropic verbunden.

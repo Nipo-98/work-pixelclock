@@ -1,0 +1,99 @@
+"""Settings, stored as JSON in %APPDATA%\\PixelPanel."""
+
+from __future__ import annotations
+
+import copy
+import json
+import logging
+import os
+import uuid
+from pathlib import Path
+
+log = logging.getLogger(__name__)
+
+APP_DIR = Path(os.environ.get("APPDATA", Path.home())) / "PixelPanel"
+CONFIG_FILE = APP_DIR / "config.json"
+ICON_CACHE = APP_DIR / "icons"
+
+PAGE_TYPES: dict[str, str] = {
+    "clock": "Uhr",
+    "native_clock": "Uhr (eingebaut im Panel)",
+    "date": "Datum",
+    "text": "Text / Emoji",
+    "image": "Bild / GIF",
+    "weather": "Wetter",
+    "teams": "Teams-Status",
+    "claude": "Claude-Nutzung",
+}
+
+PAGE_DEFAULTS: dict[str, dict] = {
+    "clock": {"color": "#ffffff", "effect": "none", "seconds": False, "weekday_bar": True},
+    "native_clock": {"style": 1, "show_date": True},
+    "date": {"color": "#00c8e6", "icon": "calendar", "effect": "none"},
+    "text": {"text": "Hallo!", "color": "#ffbe00", "icon": "😀", "effect": "none"},
+    "image": {"path": ""},
+    "weather": {"color": "#ffffff", "effect": "none"},
+    "teams": {},
+    "claude": {"show": "both"},
+}
+
+
+def new_page(page_type: str) -> dict:
+    return {"id": uuid.uuid4().hex[:8], "type": page_type, "enabled": True, "duration": 10,
+            **copy.deepcopy(PAGE_DEFAULTS[page_type])}
+
+
+def default_config() -> dict:
+    pages = [new_page("clock"), new_page("claude"), new_page("teams"), new_page("text")]
+    pages[0]["duration"] = 15
+    pages[2]["enabled"] = False
+    pages[3]["enabled"] = False
+    return {
+        "address": None,
+        "name": None,
+        "power": True,
+        "brightness": 60,
+        "orientation": "landscape",
+        "pages": pages,
+        "teams": {
+            "enabled": True,
+            "status_light": True,
+            "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
+        },
+        "claude": {"enabled": True, "interval": 120},
+        "weather": {"city": "", "lat": None, "lon": None},
+        "night": {"enabled": False, "start": "22:00", "end": "07:00", "brightness": 5},
+        "autostart": False,
+        "start_minimized": False,
+    }
+
+
+def _merge(base: dict, saved: dict) -> dict:
+    out = copy.deepcopy(base)
+    for key, value in saved.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def load() -> dict:
+    cfg = default_config()
+    try:
+        cfg = _merge(cfg, json.loads(CONFIG_FILE.read_text(encoding="utf-8")))
+    except FileNotFoundError:
+        pass
+    except (OSError, ValueError) as err:
+        log.warning("config not readable, using defaults: %s", err)
+    # pages saved by an older version get the new keys of their type
+    cfg["pages"] = [{**PAGE_DEFAULTS.get(p.get("type"), {}), **p} for p in cfg["pages"]
+                    if p.get("type") in PAGE_TYPES]
+    return cfg
+
+
+def save(cfg: dict) -> None:
+    APP_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = CONFIG_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(CONFIG_FILE)
