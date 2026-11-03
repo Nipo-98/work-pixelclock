@@ -161,6 +161,20 @@ def teams_screen(state: str | None, light: bool) -> Screen:
     return Screen([Line(label, color)], icon=dot_icon(color), big=False)
 
 
+def add_frame(rendered: Rendered, color: tuple[int, int, int]) -> Rendered:
+    """Copy of the picture with 1 px bars in `color` on the left and right edge (Teams status).
+
+    Only the sides: two text lines need all 16 rows, a top/bottom border would cut them."""
+    framed = []
+    for f in rendered.frames:
+        f = f.copy()
+        draw = ImageDraw.Draw(f)
+        draw.line((0, 0, 0, f.height - 1), fill=color)
+        draw.line((f.width - 1, 0, f.width - 1, f.height - 1), fill=color)
+        framed.append(f)
+    return Rendered(framed, rendered.durations, rendered.scrolls, rendered.valid_until)
+
+
 def claude_screen(usage: sources.ClaudeUsage | None, show: str) -> Screen:
     icon = claude_icon()
     if usage is None:

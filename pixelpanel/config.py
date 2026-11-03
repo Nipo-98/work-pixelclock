@@ -58,6 +58,7 @@ def default_config() -> dict:
         "teams": {
             "enabled": True,
             "status_light": True,
+            "status_frame": True,
             "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
         },
         "claude": {"enabled": True, "interval": 120},

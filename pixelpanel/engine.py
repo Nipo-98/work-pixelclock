@@ -27,6 +27,8 @@ TICK = 0.5
 RECONNECT_EVERY = 15.0
 TEAMS_EVERY = 2.0
 WEATHER_EVERY = 15 * 60
+FALLBACK_PAGE = {"id": "_fallback_clock", "type": "clock", "color": "#ffffff", "effect": "none",
+                 "seconds": False, "weekday_bar": True}
 
 
 @dataclass
@@ -279,8 +281,8 @@ class Engine:
         if teams.get("enabled", True) and teams.get("status_light") and self.ctx.teams in teams.get("light_states", []):
             return {"id": "_teams_light", "type": "teams"}, "Teams-Statuslicht", True
         rotation = self._rotation(cfg)
-        if not rotation:
-            return None, "Keine Seite aktiv", False
+        if not rotation:  # never leave the last picture (e.g. an old status light) standing
+            return FALLBACK_PAGE, "Uhr (keine Seite aktiv)", False
         if self._rot_started == 0:
             self._rot_started = now_m
         elif self._advance or (len(rotation) > 1 and now_m - self._rot_started >= max(self._rot_min, 1)):
@@ -300,7 +302,11 @@ class Engine:
                 self._publish()
             return
         now = datetime.now()
-        key = pages.signature(page, self.ctx, now) + (light, self.config.get("orientation"))
+        teams = self.config["teams"]
+        frame = None
+        if not light and teams.get("enabled", True) and teams.get("status_frame") and self.ctx.teams:
+            frame = sources.teams_label(self.ctx.teams)[1]
+        key = pages.signature(page, self.ctx, now) + (light, frame, self.config.get("orientation"))
         still_valid = self._shown.valid_until is None or now < self._shown.valid_until
         send = self.client.connected and self.config.get("power", True) and (key != self._shown.key or not still_valid)
         need_preview = key != self._preview_key
@@ -313,6 +319,8 @@ class Engine:
             out = render.render_screen(pages.teams_screen(self.ctx.teams, light=True), vw, vh)
         else:
             out = await asyncio.to_thread(pages.render_page, page, self.ctx, vw, vh, now)
+        if frame and isinstance(out, Rendered):
+            out = pages.add_frame(out, frame)
         if isinstance(out, Rendered) and self._rot_min and out.scroll_ms and page is not None:
             # scrolling text stays at least one full pass
             self._rot_min = max(self._rot_min, out.scroll_ms / 1000)
@@ -338,5 +346,6 @@ class Engine:
                 log.warning("send failed: %s", err)
                 self.status.error = f"Senden fehlgeschlagen: {err}"
         if self.status.showing != label:
+            log.info("zeige: %s", label)
             self.status.showing = label
             self._publish()

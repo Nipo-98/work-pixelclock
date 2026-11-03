@@ -35,7 +35,7 @@ Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichent
 |---|---|
 | **Sofort anzeigen** | Text mit Emoji oder Icon, eigene Farbe, Hintergrund-Effekt, für X Sekunden oder dauerhaft; Bild oder animiertes GIF; die 9 eingebauten Uhr-Designs des Panels |
 | **Seiten-Rotation** | Beliebig viele Seiten, die nacheinander durchlaufen: Uhr, Datum, Text/Emoji, Bild/GIF, Wetter, Teams-Status, Claude-Nutzung – jede mit eigener Anzeigedauer, per Haken an/aus, sortierbar |
-| **Teams-Statuslicht** | Bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
+| **Teams-Status** | Farbige Statusleiste am Rand jeder Seite; bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
 | **Claude-Nutzung** | Prozent der 5-Stunden-Sitzung und des Wochenlimits deines Claude-Abos, farbig (grün/gelb/rot) |
 | **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
 | **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
@@ -142,10 +142,18 @@ Teams-Statuslicht an/aus, **Beenden**.
   (`%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs\MSTeams_*.log`,
   Zeilen `UserPresenceAction … availability: Busy`). Keine Anmeldung, keine Azure-App, keine
   Admin-Rechte; geprüft wird alle 2 Sekunden.
-- Unter *Teams & Claude* legst du fest, **bei welchen Status** das Statuslicht angeht
-  (Standard: Beschäftigt, Im Anruf, Im Meeting, Am Telefon, Präsentiert, Nicht stören).
-  Bei allen anderen Status läuft die normale Rotation.
-- Priorität: **Sofort anzeigen** > **Statuslicht** > **Rotation**.
+- **Statusleiste:** Solange die Rotation läuft, hat jede Seite links und rechts einen
+  1-Pixel-Streifen in der Teams-Farbe – der Status ist also immer sichtbar, ohne die Rotation
+  anzuhalten (abschaltbar unter *Teams & Claude*).
+
+  ![Statusleiste](docs/images/teams-rahmen.png)
+
+- **Statuslicht:** Unter *Teams & Claude* legst du fest, **bei welchen Status** das ganze Panel
+  leuchtet und die Rotation pausiert (Standard: Beschäftigt, Im Anruf, Im Meeting, Am Telefon,
+  Präsentiert, Nicht stören). **Nur Status anhaken, bei denen die Rotation wirklich anhalten
+  soll** – wer „Verfügbar“ anhakt, hat dauerhaft Statuslicht und keine Rotation mehr.
+- Priorität: **Sofort anzeigen** > **Statuslicht** > **Rotation**. Ist keine Seite angehakt,
+  zeigt das Panel die Uhr.
 - Grenzen: Funktioniert nur mit dem neuen Teams („Teams 2.0“) auf demselben PC. Während eines Anrufs
   schreibt Teams meist nur „Beschäftigt“ ins Log. Da es keine offizielle Schnittstelle ist, kann ein
   Teams-Update das Format ändern.
@@ -193,6 +201,7 @@ Zum Zurücksetzen Programm beenden und `config.json` löschen.
 | **Kein Panel gefunden** | Panel an? Handy-App geschlossen / Handy-Bluetooth aus? (Ein verbundenes Panel ist für andere unsichtbar.) Bluetooth am PC an? Näher ran. |
 | **„Panel nicht erreichbar – neuer Versuch läuft“** | Programm versucht es alle 15 s erneut. Panel kurz vom Strom trennen hilft meistens. |
 | **Handy-App verbindet nicht mehr** | Pixel Panel über das Taskleisten-Symbol **beenden** – dann ist das Panel wieder frei. |
+| **Rotation läuft nicht / Panel hängt auf einem Teams-Status** | Unter *Teams & Claude* beim Statuslicht nur „Beschäftigt“-artige Status anhaken (nicht „Verfügbar“), und unter *Seiten* mindestens zwei Seiten anhaken. |
 | **Teams-Status bleibt „noch kein Status“** | Nur der neue Teams-Client wird unterstützt. Status einmal in Teams ändern, dann taucht er im Log auf. |
 | **Claude: „Nicht in Claude Code angemeldet“ / „Anmeldung abgelaufen“** | Claude Code starten und ggf. `/login`. |
 | **„Pixel Panel läuft bereits“** | Es läuft schon eine Instanz – Symbol in der Taskleiste (ggf. unter ^). |

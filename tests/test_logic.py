@@ -88,6 +88,56 @@ def test_signature_changes_with_data():
     assert pages.signature(clock, pages.Context(), now) != pages.signature(clock, pages.Context(), now.replace(minute=6))
 
 
+def test_status_frame_colours_the_edge_of_every_frame():
+    page = config.new_page("text")
+    out = pages.render_page(page, pages.Context(), 64, 16, datetime(2026, 11, 3, 14, 5))
+    framed = pages.add_frame(out, (0, 200, 60))
+    for f in framed.frames:
+        assert f.getpixel((0, 0)) == (0, 200, 60)
+        assert f.getpixel((63, 15)) == (0, 200, 60)
+        assert f.getpixel((63, 8)) == (0, 200, 60)
+    assert out.frames[0].getpixel((0, 0)) != (0, 200, 60)  # original untouched
+
+
+def test_default_light_states_leave_rotation_for_available():
+    light = config.default_config()["teams"]["light_states"]
+    assert "Available" not in light and "Away" not in light
+
+
+def _engine(pages_cfg, teams_state=None):
+    from pixelpanel.engine import Engine
+    cfg = config.default_config()
+    cfg["pages"] = pages_cfg
+    e = Engine(cfg)
+    e.ctx.teams = teams_state
+    return e
+
+
+def test_rotation_advances_after_duration():
+    ps = [config.new_page(t) for t in ("clock", "claude", "teams")]
+    for p in ps:
+        p["duration"] = 10
+    e = _engine(ps, "Available")
+    seen = [e._choose(e.config, t)[0]["type"] for t in (100, 105, 111, 116, 122, 133)]
+    assert seen == ["clock", "clock", "claude", "claude", "teams", "clock"]
+
+
+def test_status_light_pauses_rotation_only_for_checked_states():
+    ps = [config.new_page("clock"), config.new_page("claude")]
+    e = _engine(ps, "Busy")
+    assert e._choose(e.config, 100)[2] is True
+    e.ctx.teams = "Available"
+    assert e._choose(e.config, 101)[2] is False
+
+
+def test_no_active_page_falls_back_to_clock():
+    ps = [config.new_page("claude")]
+    ps[0]["enabled"] = False
+    e = _engine(ps, "Available")
+    page, _label, light = e._choose(e.config, 100)
+    assert page is not None and page["type"] == "clock" and not light
+
+
 def test_config_roundtrip(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "CONFIG_FILE", tmp_path / "c.json")
     monkeypatch.setattr(config, "APP_DIR", tmp_path)
