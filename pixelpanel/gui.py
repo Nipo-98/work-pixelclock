@@ -197,6 +197,9 @@ class PageEditor(QWidget):
         if t == "teams":
             self.form.addRow(QLabel("Zeigt deinen aktuellen Teams-Status als farbigen Punkt.\n"
                                     "Das Statuslicht (ganzes Panel) stellst du unter „Teams & Claude“ ein."))
+        if t == "calendar":
+            self.form.addRow(QLabel("Zeigt Uhrzeit und Titel deines nächsten Meetings.\n"
+                                    "Anmeldung und Erinnerung stellst du im Tab „Kalender“ ein."))
         if t == "claude":
             show = QComboBox()
             for key, label in CLAUDE_SHOW.items():
@@ -246,6 +249,7 @@ class MainWindow(QMainWindow):
         tabs.addTab(self._build_now_tab(), "Sofort anzeigen")
         tabs.addTab(self._build_pages_tab(), "Seiten (Rotation)")
         tabs.addTab(self._build_live_tab(), "Teams && Claude")
+        tabs.addTab(self._build_calendar_tab(), "Kalender")
         tabs.addTab(self._build_settings_tab(), "Einstellungen")
         root.addWidget(tabs, 1)
         self.setCentralWidget(central)
@@ -579,6 +583,74 @@ class MainWindow(QMainWindow):
         lay.addStretch(1)
         return w
 
+    # --- tab: calendar --------------------------------------------------------------------------
+
+    def _build_calendar_tab(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        cal = self.cfg["calendar"]
+        box = QGroupBox("Microsoft-365-Kalender (Outlook)")
+        form = QFormLayout(box)
+        en = QCheckBox("Nächstes Meeting abrufen")
+        en.setChecked(cal.get("enabled", False))
+        en.toggled.connect(lambda v: self._set_sub("calendar", "enabled", v))
+        form.addRow("", en)
+        for key, label, hint in (("client_id", "Anwendungs-ID (Client)", "aus der App-Registrierung"),
+                                 ("tenant_id", "Verzeichnis-ID (Tenant)", "aus der App-Registrierung")):
+            field = QLineEdit(cal.get(key, ""))
+            field.setPlaceholderText(f"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx – {hint}")
+            field.editingFinished.connect(lambda f=field, k=key: self._set_sub("calendar", k, f.text().strip()))
+            form.addRow(label, field)
+        row = QHBoxLayout()
+        sign_in = QPushButton("Anmelden …")
+        sign_in.setToolTip("Öffnet die Microsoft-Anmeldung im Browser (einmalig)")
+        sign_in.clicked.connect(self._calendar_sign_in)
+        sign_out = QPushButton("Abmelden")
+        sign_out.clicked.connect(self.engine.calendar_sign_out)
+        row.addWidget(sign_in)
+        row.addWidget(sign_out)
+        row.addStretch(1)
+        form.addRow("", row)
+        self.cal_status = QLabel("–")
+        self.cal_status.setWordWrap(True)
+        form.addRow("Status", self.cal_status)
+        self.cal_next = QLabel("–")
+        self.cal_next.setStyleSheet("font-weight:bold")
+        self.cal_next.setWordWrap(True)
+        form.addRow("Nächstes Meeting", self.cal_next)
+        remind = QSpinBox()
+        remind.setRange(0, 60)
+        remind.setSuffix(" Min vorher")
+        remind.setSpecialValueText("aus")
+        remind.setValue(int(cal.get("remind_minutes", 5)))
+        remind.valueChanged.connect(lambda v: self._set_sub("calendar", "remind_minutes", v))
+        form.addRow("Erinnerung", remind)
+        hint = QLabel("Die Erinnerung zeigt kurz vor dem Meeting einen Countdown („in 4 Min“) – sie hat "
+                      "Vorrang vor Statuslicht und Rotation. Für die Seite „Nächstes Meeting“ in der Rotation: "
+                      "Tab „Seiten“ › „+ Seite“.\n\nDie IDs stammen aus einer App-Registrierung in Microsoft "
+                      "Entra ID (Anleitung im README). Gelesen wird nur dein Kalender (Recht Calendars.Read).")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color:#888")
+        form.addRow(hint)
+        lay.addWidget(box)
+        lay.addStretch(1)
+        return w
+
+    def _calendar_sign_in(self) -> None:
+        self.cal_status.setText("Anmeldung im Browser läuft …")
+        fut = self.engine.calendar_sign_in()
+
+        def done() -> None:
+            if not fut.done():
+                QTimer.singleShot(300, done)
+                return
+            try:
+                self.cal_status.setText(f"Angemeldet als {fut.result()}")
+            except Exception as err:  # noqa: BLE001 - shown to the user
+                self.cal_status.setText(f"Anmeldung fehlgeschlagen: {err}")
+
+        QTimer.singleShot(300, done)
+
     def _toggle_light_state(self, key: str, on: bool) -> None:
         states = set(self.cfg["teams"].get("light_states", []))
         states.add(key) if on else states.discard(key)
@@ -745,6 +817,16 @@ class MainWindow(QMainWindow):
                 return f"{pct:.0f} %{when}" if pct is not None else "?"
             self.claude_now.setText(f"Sitzung: {fmt(c.session, c.session_reset)}\n"
                                     f"Woche: {fmt(c.week, c.week_reset)}" + (f"\nAbo: {c.plan}" if c.plan else ""))
+        if st.calendar:
+            self.cal_status.setText(st.calendar)
+        m = st.meeting
+        if m is None:
+            self.cal_next.setText("–")
+        else:
+            start, end = m.start.astimezone(), m.end.astimezone()
+            days = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+            self.cal_next.setText(f"{days[start.weekday()]} {start:%H:%M}–{end:%H:%M}  {m.subject}"
+                                  + (f"  ({m.location})" if m.location else ""))
         wx = st.weather
         if wx:
             self.weather_now.setText(f"{wx.temperature:.0f} °C ({wx.icon}), heute {wx.low:.0f}–{wx.high:.0f} °C")

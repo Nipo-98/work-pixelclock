@@ -10,12 +10,13 @@ import copy
 import logging
 import threading
 import time
+import urllib.error
 from collections.abc import Callable
 from concurrent.futures import Future
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
-from . import ble, pages, sources
+from . import ble, m365, pages, sources
 from .config import PAGE_TYPES
 from .core import protocol as proto
 from .core import render
@@ -27,6 +28,8 @@ TICK = 0.5
 RECONNECT_EVERY = 15.0
 TEAMS_EVERY = 2.0
 WEATHER_EVERY = 15 * 60
+CALENDAR_EVERY = 5 * 60
+REMINDER_PAGE = {"id": "_reminder", "type": "calendar", "remind": True}
 FALLBACK_PAGE = {"id": "_fallback_clock", "type": "clock", "color": "#ffffff", "effect": "none",
                  "seconds": False, "weekday_bar": True}
 
@@ -39,6 +42,8 @@ class Status:
     teams: str | None = None
     claude: sources.ClaudeUsage | None = None
     weather: sources.Weather | None = None
+    meeting: m365.Meeting | None = None
+    calendar: str = ""  # account or problem, for the settings tab
     error: str | None = None
 
 
@@ -82,6 +87,9 @@ class Engine:
         self._next_teams = 0.0
         self._next_claude = 0.0
         self._next_weather = 0.0
+        self._next_calendar = 0.0
+        self._calendar: m365.Calendar | None = None
+        self._calendar_ids: tuple[str, str] | None = None
         self._applied: dict = {}
         self._stop = False
         self._wake_event: asyncio.Event | None = None
@@ -108,6 +116,9 @@ class Engine:
         self._preview_key = None
         if cfg.get("weather", {}).get("lat") != self._applied.get("lat"):
             self._next_weather = 0
+        cal = cfg.get("calendar", {})
+        if (cal.get("client_id", "").strip(), cal.get("tenant_id", "").strip()) != self._calendar_ids:
+            self._next_calendar = 0
         self._next_connect = 0
         self._wake()
 
@@ -128,6 +139,36 @@ class Engine:
     def refresh_claude(self) -> None:
         self._next_claude = 0
         self._wake()
+
+    def _get_calendar(self) -> m365.Calendar | None:
+        cal = self.config.get("calendar", {})
+        ids = (cal.get("client_id", "").strip(), cal.get("tenant_id", "").strip())
+        if not ids[0]:
+            return None
+        if ids != self._calendar_ids:
+            self._calendar, self._calendar_ids = m365.Calendar(*ids), ids
+        return self._calendar
+
+    def calendar_sign_in(self) -> Future:
+        """Browser sign-in (blocks a worker thread, not the panel loop); result: account name."""
+        async def _sign_in():
+            cal = self._get_calendar()
+            if cal is None:
+                raise ValueError("Erst Client-ID eintragen")
+            account = await asyncio.to_thread(cal.sign_in)
+            self._next_calendar = 0
+            self._wake()
+            return account
+        return self.submit(_sign_in())
+
+    def calendar_sign_out(self) -> None:
+        async def _out():
+            if (cal := self._get_calendar()) is not None:
+                await asyncio.to_thread(cal.sign_out)
+            self.ctx.meeting = None
+            self.status.calendar = "Abgemeldet"
+            self._publish()
+        self.submit(_out())
 
     def submit(self, coro) -> Future:
         return asyncio.run_coroutine_threadsafe(coro, self._loop)
@@ -179,6 +220,7 @@ class Engine:
         self.status.teams = self.ctx.teams
         self.status.claude = self.ctx.claude
         self.status.weather = self.ctx.weather
+        self.status.meeting = self.ctx.meeting
         self.on_status(copy.copy(self.status))
 
     async def _tick(self) -> None:
@@ -204,6 +246,23 @@ class Engine:
         if cfg["claude"].get("enabled", True) and now_m >= self._next_claude:
             self._next_claude = now_m + max(30, int(cfg["claude"].get("interval", 120)))
             self.ctx.claude, changed = await asyncio.to_thread(sources.fetch_claude_usage), True
+        cal_cfg = cfg.get("calendar", {})
+        if cal_cfg.get("enabled") and cal_cfg.get("client_id") and now_m >= self._next_calendar:
+            self._next_calendar = now_m + CALENDAR_EVERY
+            changed = True
+            try:
+                cal = self._get_calendar()
+                self.ctx.meeting = await asyncio.to_thread(cal.fetch)
+                self.status.calendar = f"Angemeldet als {await asyncio.to_thread(cal.account)}"
+            except PermissionError:
+                self.ctx.meeting, self.status.calendar = None, "Nicht angemeldet – „Anmelden“ klicken"
+            except urllib.error.HTTPError as err:
+                self.status.calendar = f"Kalender: HTTP {err.code}" + (" – Berechtigung fehlt?" if err.code == 403 else "")
+                self._next_calendar = now_m + 120
+            except Exception as err:  # noqa: BLE001 - network, MSAL configuration
+                log.warning("calendar: %s", err)
+                self.status.calendar = f"Kalender: {err}"
+                self._next_calendar = now_m + 120
         wx = cfg.get("weather", {})
         if wx.get("lat") is not None and now_m >= self._next_weather:
             self._next_weather = now_m + WEATHER_EVERY
@@ -277,6 +336,12 @@ class Engine:
                 self._shown = _Shown()
             else:
                 return msg.page, "Sofort-Anzeige", False
+        cal = cfg.get("calendar", {})
+        meeting = self.ctx.meeting
+        if cal.get("enabled") and meeting and int(cal.get("remind_minutes", 0)) > 0:
+            left = (meeting.start - datetime.now(timezone.utc)).total_seconds()
+            if 0 <= left <= int(cal["remind_minutes"]) * 60:
+                return REMINDER_PAGE, "Termin-Erinnerung", False
         teams = cfg["teams"]
         if teams.get("enabled", True) and teams.get("status_light") and self.ctx.teams in teams.get("light_states", []):
             return {"id": "_teams_light", "type": "teams"}, "Teams-Statuslicht", True

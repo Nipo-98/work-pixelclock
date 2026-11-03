@@ -20,6 +20,7 @@ Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichent
 - [Bedienung](#bedienung)
 - [Teams-Statuslicht](#teams-statuslicht)
 - [Claude-Nutzung](#claude-nutzung)
+- [Kalender (nächstes Meeting)](#kalender-nächstes-meeting)
 - [Wetter](#wetter)
 - [Einstellungen und Dateien](#einstellungen-und-dateien)
 - [Fehlerbehebung](#fehlerbehebung)
@@ -37,6 +38,7 @@ Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichent
 | **Seiten-Rotation** | Beliebig viele Seiten, die nacheinander durchlaufen: Uhr, Datum, Text/Emoji, Bild/GIF, Wetter, Teams-Status, Claude-Nutzung – jede mit eigener Anzeigedauer, per Haken an/aus, sortierbar |
 | **Teams-Status** | Farbige Statusleiste am Rand jeder Seite; bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
 | **Claude-Nutzung** | Prozent der 5-Stunden-Sitzung und des Wochenlimits deines Claude-Abos, farbig (grün/gelb/rot) |
+| **Kalender** | Nächstes Meeting aus Microsoft 365 (Outlook), Countdown-Erinnerung kurz vor Beginn |
 | **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
 | **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
 | **Panel** | An/aus, Helligkeit, Nachtmodus (zeitgesteuert dunkler), Ausrichtung inkl. hochkant |
@@ -174,6 +176,44 @@ Teams-Statuslicht an/aus, **Beenden**.
 
 ---
 
+## Kalender (nächstes Meeting)
+
+![Kalender](docs/images/kalender.png)
+
+*Nächstes Meeting · Erinnerung kurz vorher · laufendes Meeting · keine Termine*
+
+- Seite **„Nächstes Meeting“**: Uhrzeit (bzw. Wochentag + Uhrzeit, wenn nicht heute) und Titel.
+  Läuft gerade ein Meeting: „bis 11:00“.
+- **Erinnerung:** X Minuten vor Beginn (Standard 5) erscheint ein Countdown „in 4 Min“ – mit
+  Vorrang vor Statuslicht und Rotation.
+- Nicht gezählt werden abgesagte, abgelehnte, ganztägige und als „frei“ eingetragene Termine.
+- Daten aus deinem **Microsoft-365-Kalender** über Microsoft Graph, Abruf alle 5 Minuten.
+  Funktioniert mit dem neuen und dem klassischen Outlook.
+
+### Einrichtung: App-Registrierung (einmalig, ggf. durch die IT)
+
+Für die Anmeldung braucht es eine App-Registrierung im Microsoft-Entra-Mandanten der Firma.
+Darf man das nicht selbst, die IT mit genau diesen Angaben bitten:
+
+1. [Entra Admin Center](https://entra.microsoft.com) › **Anwendungen › App-Registrierungen ›
+   Neue Registrierung**
+   - Name: `Pixel Panel`
+   - Kontotypen: **Nur Konten in diesem Organisationsverzeichnis**
+   - Umleitungs-URI: Plattform **Öffentlicher Client/nativ (mobil und Desktop)**, URI
+     `http://localhost`
+2. **Authentifizierung** › *Öffentliche Clientflows zulassen*: **Ja**
+3. **API-Berechtigungen** › Berechtigung hinzufügen › Microsoft Graph › **Delegierte
+   Berechtigungen** › `Calendars.Read` (`User.Read` ist schon da). Wenn Benutzer in eurem
+   Mandanten nicht selbst zustimmen dürfen: **Administratorzustimmung erteilen**.
+4. Auf der Übersichtsseite **Anwendungs-ID (Client)** und **Verzeichnis-ID (Mandant)** kopieren.
+
+In Pixel Panel › Tab **Kalender**: beide IDs eintragen, *Nächstes Meeting abrufen* anhaken,
+**Anmelden …** – der Browser öffnet die normale Microsoft-Anmeldung. Danach bleibt man angemeldet
+(Token verschlüsselt mit Windows-DPAPI in `%APPDATA%\PixelPanel\m365_token.bin`; **Abmelden**
+löscht es). Die App kann nur lesen, nichts ändern oder senden.
+
+---
+
 ## Wetter
 
 Unter *Einstellungen › Wetter* einen Ort eingeben und **Ort übernehmen**. Daten von
@@ -244,6 +284,7 @@ pixelpanel/
   ble.py          Bluetooth-LE-Verbindung zum Panel (bleak), Upload mit ACKs
   pages.py        Seite + Live-Daten -> Bild/GIF (Emojis, Icons, Teams, Claude, Wetter …)
   sources.py      Teams-Log, Claude-Nutzung, Wetter (Open-Meteo)
+  m365.py         Microsoft-365-Kalender (MSAL-Anmeldung, Graph calendarView)
   config.py       Einstellungen (JSON in %APPDATA%\PixelPanel)
   autostart.py    Start mit Windows (Registry, ohne Admin)
   core/           Protokoll, Pixelschrift, Icons, Effekte, Zeichnen – aus ha-pixelclock

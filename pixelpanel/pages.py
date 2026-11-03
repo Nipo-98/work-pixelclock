@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
 from . import sources
 from .config import ICON_CACHE
+from .m365 import Meeting
 from .core import icons, render
 from .core import protocol as proto
 from .core.render import Line, Rendered, Screen
@@ -33,6 +34,7 @@ class Context:
     teams: str | None = None
     claude: sources.ClaudeUsage | None = None
     weather: sources.Weather | None = None
+    meeting: Meeting | None = None
 
 
 @dataclass
@@ -194,6 +196,28 @@ def claude_screen(usage: sources.ClaudeUsage | None, show: str) -> Screen:
                    Line(f"Wo {pct(usage.week)}", usage_color(usage.week))], icon=icon)
 
 
+CAL_COLOR = (0, 200, 230)
+
+
+def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool) -> Screen:
+    """Two lines: when (time, countdown or 'bis HH:MM') and the subject (scrolls when long)."""
+    icon = icons.builtin_icon("calendar")
+    if meeting is None:
+        return Screen([Line("Keine", sources.GREY), Line("Termine", sources.GREY)], icon=icon)
+    start, end = meeting.start.astimezone(), meeting.end.astimezone()
+    now = now.astimezone()
+    if meeting.running(now):
+        when, color = f"bis {end:%H:%M}", (230, 20, 20)
+    elif remind:
+        mins = max(0, -(-int((start - now).total_seconds()) // 60))
+        when, color = ("jetzt" if mins == 0 else f"in {mins} Min"), (255, 110, 0)
+    elif start.date() == now.date():
+        when, color = f"{start:%H:%M}", CAL_COLOR
+    else:
+        when, color = f"{WEEKDAYS[start.weekday()]} {start:%H:%M}", CAL_COLOR
+    return Screen([Line(when, color), Line(meeting.subject, render.WHITE)], icon=icon)
+
+
 def render_image_file(path: str, w: int, h: int) -> Rendered:
     with Image.open(path) as img:
         frames, durations = [], []
@@ -250,6 +274,8 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
         screen = teams_screen(ctx.teams, light=False)
     elif t == "claude":
         screen = claude_screen(ctx.claude, page.get("show", "both"))
+    elif t == "calendar":
+        screen = calendar_screen(ctx.meeting, now, remind=bool(page.get("remind")))
     else:
         screen = Screen([Line("?")])
     return render.render_screen(screen, w, h)
@@ -277,4 +303,6 @@ def signature(page: dict, ctx: Context, now: datetime) -> tuple:
     if t == "claude":
         u = ctx.claude
         return base + ((u.session, u.week, u.error) if u else None,)
+    if t == "calendar":  # the minute matters for the countdown and for "running"
+        return base + (ctx.meeting, now.strftime("%Y%m%d%H%M"))
     return base

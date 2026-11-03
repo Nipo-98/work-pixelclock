@@ -24,6 +24,7 @@ PAGE_TYPES: dict[str, str] = {
     "weather": "Wetter",
     "teams": "Teams-Status",
     "claude": "Claude-Nutzung",
+    "calendar": "Nächstes Meeting",
 }
 
 PAGE_DEFAULTS: dict[str, dict] = {
@@ -35,6 +36,7 @@ PAGE_DEFAULTS: dict[str, dict] = {
     "weather": {"color": "#ffffff", "effect": "none"},
     "teams": {},
     "claude": {"show": "both"},
+    "calendar": {},
 }
 
 
@@ -63,6 +65,8 @@ def default_config() -> dict:
             "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
         },
         "claude": {"enabled": True, "interval": 120},
+        # Microsoft 365 calendar via Graph; client/tenant id come from the org's app registration
+        "calendar": {"enabled": False, "client_id": "", "tenant_id": "", "remind_minutes": 5},
         "weather": {"city": "", "lat": None, "lon": None},
         "night": {"enabled": False, "start": "22:00", "end": "07:00", "brightness": 5},
         "autostart": False,
