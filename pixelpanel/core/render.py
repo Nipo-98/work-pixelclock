@@ -210,7 +210,7 @@ def _layout(screen: Screen, width: int, height: int) -> tuple[int, int, int, lis
     if screen.big and len(lines) == 1:
         text = lines[0].text
         glyph_h = font.LINE_HEIGHT if font.has_descender(text) else font.CAP_HEIGHT
-        avail_h = height - (1 if screen.progress is not None else 0)
+        avail_h = height - (2 if screen.progress is not None else 0)  # bar + 1 px gap
         for s in range(max(1, avail_h // glyph_h), 1, -1):
             if font.text_width(text, s) <= area_w:
                 scale = s
@@ -219,7 +219,7 @@ def _layout(screen: Screen, width: int, height: int) -> tuple[int, int, int, lis
     if len(lines) == 1:
         text = lines[0].text
         glyph_h = (font.LINE_HEIGHT if font.has_descender(text) else font.CAP_HEIGHT) * scale
-        avail_h = height - (2 if screen.progress is not None and scale == 1 else 0)
+        avail_h = height - (2 if screen.progress is not None else 0)  # never touch the progress bar
         tops = [max(0, (avail_h - glyph_h) // 2)]
     else:
         block = len(lines) * font.LINE_HEIGHT
@@ -297,8 +297,9 @@ def render_clock(now: datetime, width: int, height: int, color: RGB = WHITE,
     if height > width:
         return _render_clock_tall(now, width, height, color, blink, weekday_color, weekdays or WEEKDAYS_SHORT,
                                   effect, seconds)
-    bar_h = 2 if weekday_bar and height >= 16 else (1 if weekday_bar and height >= 12 else 0)
-    avail_h = height - bar_h
+    # 1 px weekday bar plus 1 px gap, so the big digits never touch the bar
+    bar_h = 1 if weekday_bar and height >= 12 else 0
+    avail_h = height - bar_h - (1 if bar_h else 0)
     digits = now.strftime("%H:%M")
     sec_w = font.text_width("00") + 2 if seconds else 0  # small seconds right of the minutes
     scale = 1

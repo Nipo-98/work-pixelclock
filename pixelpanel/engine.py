@@ -303,10 +303,11 @@ class Engine:
             return
         now = datetime.now()
         teams = self.config["teams"]
-        frame = None
+        frame, bars = None, 0
         if not light and teams.get("enabled", True) and teams.get("status_frame") and self.ctx.teams:
             frame = sources.teams_label(self.ctx.teams)[1]
-        key = pages.signature(page, self.ctx, now) + (light, frame, self.config.get("orientation"))
+            bars = max(1, min(3, int(teams.get("bar_width", 2))))
+        key = pages.signature(page, self.ctx, now) + (light, frame, bars, self.config.get("orientation"))
         still_valid = self._shown.valid_until is None or now < self._shown.valid_until
         send = self.client.connected and self.config.get("power", True) and (key != self._shown.key or not still_valid)
         need_preview = key != self._preview_key
@@ -318,9 +319,9 @@ class Engine:
         if light:
             out = render.render_screen(pages.teams_screen(self.ctx.teams, light=True), vw, vh)
         else:
-            out = await asyncio.to_thread(pages.render_page, page, self.ctx, vw, vh, now)
-        if frame and isinstance(out, Rendered):
-            out = pages.add_frame(out, frame)
+            out = await asyncio.to_thread(pages.render_page, page, self.ctx, vw - 2 * bars, vh, now)
+            if frame and isinstance(out, Rendered):  # (the built-in clock has no picture to frame)
+                out = pages.with_status_bars(out, frame, bars)
         if isinstance(out, Rendered) and self._rot_min and out.scroll_ms and page is not None:
             # scrolling text stays at least one full pass
             self._rot_min = max(self._rot_min, out.scroll_ms / 1000)

@@ -142,9 +142,10 @@ Teams-Statuslicht an/aus, **Beenden**.
   (`%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs\MSTeams_*.log`,
   Zeilen `UserPresenceAction … availability: Busy`). Keine Anmeldung, keine Azure-App, keine
   Admin-Rechte; geprüft wird alle 2 Sekunden.
-- **Statusleiste:** Solange die Rotation läuft, hat jede Seite links und rechts einen
-  1-Pixel-Streifen in der Teams-Farbe – der Status ist also immer sichtbar, ohne die Rotation
-  anzuhalten (abschaltbar unter *Teams & Claude*).
+- **Statusleiste:** Solange die Rotation läuft, hat jede Seite links und rechts einen Streifen
+  in der Teams-Farbe – der Status ist also immer sichtbar, ohne die Rotation anzuhalten. Breite
+  **1, 2 oder 3 Pixel** einstellbar (Standard 2), abschaltbar unter *Teams & Claude*. Die Seite
+  wird dafür entsprechend schmaler gezeichnet, die Streifen überdecken also nichts.
 
   ![Statusleiste](docs/images/teams-rahmen.png)
 

@@ -88,15 +88,39 @@ def test_signature_changes_with_data():
     assert pages.signature(clock, pages.Context(), now) != pages.signature(clock, pages.Context(), now.replace(minute=6))
 
 
-def test_status_frame_colours_the_edge_of_every_frame():
+GREEN = (0, 200, 60)
+NOW = datetime(2026, 11, 3, 14, 5)
+
+
+def _row(img, y, x0=0, x1=None):
+    return [img.getpixel((x, y)) for x in range(x0, x1 if x1 is not None else img.width)]
+
+
+@pytest.mark.parametrize("bars", [1, 2, 3])
+def test_status_bars_have_the_chosen_width_and_do_not_cover_content(bars):
     page = config.new_page("text")
-    out = pages.render_page(page, pages.Context(), 64, 16, datetime(2026, 11, 3, 14, 5))
-    framed = pages.add_frame(out, (0, 200, 60))
-    for f in framed.frames:
-        assert f.getpixel((0, 0)) == (0, 200, 60)
-        assert f.getpixel((63, 15)) == (0, 200, 60)
-        assert f.getpixel((63, 8)) == (0, 200, 60)
-    assert out.frames[0].getpixel((0, 0)) != (0, 200, 60)  # original untouched
+    inner = pages.render_page(page, pages.Context(), 64 - 2 * bars, 16, NOW)
+    framed = pages.with_status_bars(inner, GREEN, bars)
+    f = framed.frames[0]
+    assert f.size == (64, 16)
+    for x in list(range(bars)) + list(range(64 - bars, 64)):
+        assert all(f.getpixel((x, y)) == GREEN for y in range(16))
+    assert f.crop((bars, 0, 64 - bars, 16)).tobytes() == inner.frames[0].tobytes()
+
+
+def test_clock_digits_keep_a_gap_above_the_weekday_bar():
+    f = pages.render_page(config.new_page("clock"), pages.Context(), 64, 16, NOW).frames[0]
+    assert all(p == (0, 0, 0) for p in _row(f, 14)), "row 14 must stay dark between digits and bar"
+    assert any(p != (0, 0, 0) for p in _row(f, 15)), "weekday bar in the bottom row"
+    assert any(p != (0, 0, 0) for p in _row(f, 1)), "digits stay big (two times)"
+
+
+def test_claude_percent_keeps_a_gap_above_the_progress_bar():
+    page = {**config.new_page("claude"), "show": "session"}
+    ctx = pages.Context(claude=sources.ClaudeUsage(session=50, week=40))
+    f = pages.render_page(page, ctx, 64, 16, NOW).frames[0]
+    assert all(p == (0, 0, 0) for p in _row(f, 14, 17)), "row 14 dark between number and bar"
+    assert any(p != (0, 0, 0) for p in _row(f, 15, 17)), "progress bar in the bottom row"
 
 
 def test_default_light_states_leave_rotation_for_available():

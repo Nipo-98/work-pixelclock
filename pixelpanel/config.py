@@ -59,6 +59,7 @@ def default_config() -> dict:
             "enabled": True,
             "status_light": True,
             "status_frame": True,
+            "bar_width": 2,  # px of the status stripes left and right (1-3)
             "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
         },
         "claude": {"enabled": True, "interval": 120},
