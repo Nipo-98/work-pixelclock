@@ -41,6 +41,7 @@ Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichent
 | **Kalender** | Nächstes Meeting aus Microsoft 365 (Outlook), Countdown-Erinnerung kurz vor Beginn |
 | **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
 | **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
+| **Übergänge** | Seitenwechsel springen, schieben, einschießen, überblenden, wischen, auflösen – oder mit **Nyan Cat** |
 | **Panel** | An/aus, Helligkeit, Nachtmodus (zeitgesteuert dunkler), Ausrichtung inkl. hochkant |
 | **Programm** | Läuft im Hintergrund (Symbol in der Taskleiste), Start mit Windows, verbindet sich automatisch neu |
 
@@ -108,6 +109,19 @@ neue Seite über **+ Seite**. Rechts die Einstellungen der gewählten Seite:
 | **Claude-Nutzung** | Sitzung + Woche, nur Sitzung oder nur Woche (mit Balken) |
 
 Laufschrift wird immer mindestens einmal komplett gezeigt, auch wenn die Anzeigedauer kürzer ist.
+
+**Übergänge:** Oben im Tab wählst du, wie die nächste Seite aufs Panel kommt – *Sofort
+(springen)*, *Schieben nach links / oben*, *Einschießen*, *Überblenden*, *Wischen*, *Auflösen*,
+**Nyan Cat** oder *Zufällig*. Bei Nyan Cat fliegt die Katze über das Panel, zieht den Regenbogen
+über die alte Seite, der Regenbogen blendet aus und darunter liegt die neue Seite. Übergänge
+gelten für jeden Seitenwechsel (auch Statuslicht und Termin-Erinnerung); die Anzeigedauer einer
+Seite zählt erst, wenn sie vollständig da ist.
+
+<p>
+  <img src="docs/images/uebergang-nyan.gif" alt="Nyan-Cat-Übergang" width="32%">
+  <img src="docs/images/uebergang-shoot.gif" alt="Einschießen" width="32%">
+  <img src="docs/images/uebergang-push_left.gif" alt="Schieben" width="32%">
+</p>
 
 **Icons:** Feld *Icon / Emoji* akzeptiert
 
@@ -283,6 +297,7 @@ pixelpanel/
   engine.py       Hintergrund-Thread: Verbindung, Rotation, Prioritäten, Senden
   ble.py          Bluetooth-LE-Verbindung zum Panel (bleak), Upload mit ACKs
   pages.py        Seite + Live-Daten -> Bild/GIF (Emojis, Icons, Teams, Claude, Wetter …)
+  transitions.py  Übergänge zwischen Seiten (inkl. Nyan Cat)
   sources.py      Teams-Log, Claude-Nutzung, Wetter (Open-Meteo)
   m365.py         Microsoft-365-Kalender (MSAL-Anmeldung, Graph calendarView)
   config.py       Einstellungen (JSON in %APPDATA%\PixelPanel)
@@ -305,6 +320,9 @@ run.py            Einstiegspunkt für PyInstaller
   auf dem PC mit Pillow pixelgenau gezeichnet und als PNG (still) oder GIF (animiert) gesendet. Ein
   animiertes GIF von ~20 KB ist in unter einer Sekunde übertragen; die Animation läuft danach im Panel
   selbst weiter.
+- **Übergänge:** Beim Seitenwechsel wird erst ein kurzes GIF vom alten zum neuen Bild gesendet,
+  dessen letztes Bild (die neue Seite) 5 s stehen bleibt; nach dem Abspielen folgt die eigentliche
+  Seite. So springt das Panel nie zurück an den Anfang des Übergangs.
 - **Nur bei Änderungen senden:** Jede Seite hat eine „Signatur“ (z. B. Uhrzeit auf die Minute,
   Teams-Status, Claude-Prozente). Nur wenn sie sich ändert, wird neu gesendet.
 - **Verbindung:** bleibt dauerhaft offen; bei Abbruch wird alle 15 s neu verbunden. Die Panel-Uhr

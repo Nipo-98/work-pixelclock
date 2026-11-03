@@ -66,7 +66,9 @@ class TeamsWatcher:
             files = [p for p in self.log_dir.glob("MSTeams_*.log")]
         except OSError:
             return []
-        return sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
+        # newest first; NTFS times are coarse (~15 ms), so equal times are decided by the name,
+        # which carries the creation time (MSTeams_YYYY-MM-DD_hh-mm-ss.NN.log)
+        return sorted(files, key=lambda p: (p.stat().st_mtime, p.name), reverse=True)
 
     def poll(self) -> str | None:
         logs = self._logs()

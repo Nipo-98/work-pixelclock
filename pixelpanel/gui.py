@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QTime
 
-from . import autostart, config, sources
+from . import autostart, config, sources, transitions
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -414,6 +414,16 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QHBoxLayout(w)
         left = QVBoxLayout()
+        trans_row = QHBoxLayout()
+        trans = QComboBox()
+        for key, label in transitions.TRANSITIONS.items():
+            trans.addItem(label, key)
+        trans.setCurrentIndex(max(0, trans.findData(self.cfg.get("transition", "push_left"))))
+        trans.currentIndexChanged.connect(lambda _: self._set_cfg("transition", trans.currentData()))
+        trans.setToolTip("Wie die nächste Seite aufs Panel kommt")
+        trans_row.addWidget(QLabel("Übergang"))
+        trans_row.addWidget(trans, 1)
+        left.addLayout(trans_row)
         self.page_list = QListWidget()
         self.page_list.currentRowChanged.connect(self._select_page)
         self.page_list.itemChanged.connect(self._page_checked)

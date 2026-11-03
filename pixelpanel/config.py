@@ -57,6 +57,7 @@ def default_config() -> dict:
         "brightness": 60,
         "orientation": "landscape",
         "pages": pages,
+        "transition": "push_left",  # see transitions.TRANSITIONS
         "teams": {
             "enabled": True,
             "status_light": True,

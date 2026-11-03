@@ -16,7 +16,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import ble, m365, pages, sources
+from . import ble, m365, pages, sources, transitions
 from .config import PAGE_TYPES
 from .core import protocol as proto
 from .core import render
@@ -29,6 +29,12 @@ RECONNECT_EVERY = 15.0
 TEAMS_EVERY = 2.0
 WEATHER_EVERY = 15 * 60
 CALENDAR_EVERY = 5 * 60
+
+
+def _clock() -> float:
+    """Monotonic seconds; a function of its own so tests can drive the engine's time."""
+    return time.monotonic()
+
 REMINDER_PAGE = {"id": "_reminder", "type": "calendar", "remind": True}
 FALLBACK_PAGE = {"id": "_fallback_clock", "type": "clock", "color": "#ffffff", "effect": "none",
                  "seconds": False, "weekday_bar": True}
@@ -78,6 +84,8 @@ class Engine:
         self.teams = sources.TeamsWatcher()
         self._message: Message | None = None
         self._shown = _Shown()
+        self._panel_img = None  # first frame of what the panel shows (view coordinates), for transitions
+        self._panel_page: str | None = None
         self._preview_key: tuple | None = None
         self._rot_index = 0
         self._rot_started = 0.0
@@ -224,13 +232,14 @@ class Engine:
         self.on_status(copy.copy(self.status))
 
     async def _tick(self) -> None:
-        now_m = time.monotonic()
+        now_m = _clock()
         cfg = self.config
         changed = await self._update_sources(cfg, now_m)
         await self._ensure_connection(cfg, now_m)
         if self.client.connected:
             await self._apply_settings(cfg)
-        target, label, light = self._choose(cfg, now_m)
+        # fresh time: sources and connecting may have taken seconds of this tick
+        target, label, light = self._choose(cfg, _clock())
         await self._show(target, label, light)
         if changed:
             self._publish()
@@ -277,29 +286,34 @@ class Engine:
 
     async def _ensure_connection(self, cfg: dict, now_m: float) -> None:
         address = cfg.get("address")
-        connected = self.client.connected
-        if connected != self.status.connected:
-            self.status.connected = connected
-            self.status.connection = f"Verbunden mit {cfg.get('name') or address}" if connected else "Getrennt"
-            self._applied = {"lat": self._applied.get("lat")}
-            if connected:  # connecting set the clock already
-                self._applied["time_synced"] = datetime.now().date()
-            self._shown = _Shown()
-            self._publish()
-        if connected or not address or now_m < self._next_connect:
+        if self.client.connected != self.status.connected:
+            self._connection_changed(cfg)
+        if self.client.connected or not address or now_m < self._next_connect:
             return
         self._next_connect = now_m + RECONNECT_EVERY
         self.status.connection = f"Verbinde mit {cfg.get('name') or address} ..."
         self._publish()
         try:
             await self.client.connect(address)
-            self._applied["time_synced"] = datetime.now().date()  # connect() set the clock
             self.status.error = None
+            self._connection_changed(cfg)  # now, not a tick later (that would forget the first picture)
         except Exception as err:  # noqa: BLE001 - bleak raises many kinds
             log.warning("connect failed: %s", err)
             self.status.connection = "Panel nicht erreichbar – neuer Versuch läuft"
             self.status.error = str(err) or err.__class__.__name__
             self._publish()
+
+    def _connection_changed(self, cfg: dict) -> None:
+        connected = self.client.connected
+        self.status.connected = connected
+        name = cfg.get("name") or cfg.get("address")
+        self.status.connection = f"Verbunden mit {name}" if connected else "Getrennt"
+        self._applied = {"lat": self._applied.get("lat")}
+        if connected:  # connect() set the clock already
+            self._applied["time_synced"] = datetime.now().date()
+        self._shown = _Shown()
+        self._panel_img, self._panel_page = None, None  # unknown picture: no transition from it
+        self._publish()
 
     def _brightness(self, cfg: dict) -> int:
         night = cfg.get("night", {})
@@ -360,6 +374,18 @@ class Engine:
             self._rot_min = float(page.get("duration", 10))
         return page, PAGE_TYPES.get(page["type"], page["type"]), False
 
+    async def _transition(self, old, new, orientation: str) -> None:
+        """Play the configured transition; returns when it has reached the new picture."""
+        kind = self.config.get("transition", "none")
+        anim = await asyncio.to_thread(transitions.build, kind, old, new)
+        if anim is None:
+            return
+        data, is_gif = await asyncio.to_thread(render.encode, render.to_panel(anim, orientation))
+        t0 = time.monotonic()
+        await self.client.send_image(data, is_gif)
+        log.info("Übergang %s: %s Bytes in %.1f s", kind, len(data), time.monotonic() - t0)
+        await asyncio.sleep(transitions.play_ms(anim) / 1000)
+
     async def _show(self, page: dict | None, label: str, light: bool) -> None:
         if page is None:
             if self.status.showing != label:
@@ -398,13 +424,20 @@ class Engine:
             else:
                 self.on_preview(b"", "native", out.label)
         if send:
+            page_id = f"{page.get('id')}:{light}"
             try:
                 if isinstance(out, pages.Native):
                     await self.client.command(out.data)
                 else:
+                    if page_id != self._panel_page and self._panel_img is not None:
+                        await self._transition(self._panel_img, out.frames[0], orientation)
                     data, is_gif = await asyncio.to_thread(render.encode, render.to_panel(out, orientation))
                     await self.client.send_image(data, is_gif)
+                    if page_id != self._panel_page and any(p is page for p in self._rotation(self.config)):
+                        self._rot_started = _clock()  # the page's time starts once it is on the panel
                 self._shown = _Shown(key, out.valid_until if isinstance(out, Rendered) else None)
+                self._panel_img = out.frames[0] if isinstance(out, Rendered) else None
+                self._panel_page = page_id
                 if self.status.error:
                     self.status.error = None
                     self._publish()

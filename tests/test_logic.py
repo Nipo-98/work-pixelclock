@@ -146,6 +146,34 @@ def test_rotation_advances_after_duration():
     assert seen == ["clock", "clock", "claude", "claude", "teams", "clock"]
 
 
+def test_slow_tick_does_not_shorten_the_first_page(monkeypatch):
+    """The page's time starts when it is chosen, not when a slow tick (network, connect) began."""
+    import asyncio
+
+    from pixelpanel import engine as eng_mod
+    ps = [config.new_page("clock"), config.new_page("claude")]
+    e = _engine(ps, "Available")
+    clock = iter([100.0, 108.5])  # tick starts at 100, sources + connect take 8.5 s
+    monkeypatch.setattr(eng_mod, "_clock", lambda: next(clock, 108.5))
+
+    async def slow_sources(cfg, now_m):
+        return False
+
+    async def nothing(*a, **k):
+        return None
+
+    shown = []
+
+    async def show(page, label, light):
+        shown.append(page["type"])
+
+    monkeypatch.setattr(e, "_update_sources", slow_sources)
+    monkeypatch.setattr(e, "_ensure_connection", nothing)
+    monkeypatch.setattr(e, "_show", show)
+    asyncio.run(e._tick())
+    assert e._rot_started == 108.5 and shown == ["clock"]
+
+
 def test_status_light_pauses_rotation_only_for_checked_states():
     ps = [config.new_page("clock"), config.new_page("claude")]
     e = _engine(ps, "Busy")
