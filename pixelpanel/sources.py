@@ -6,6 +6,8 @@ import json
 import logging
 import os
 import re
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -138,6 +140,46 @@ def parse_claude_usage(data: dict, plan: str | None = None) -> ClaudeUsage:
     )
 
 
+CLAUDE_PROFILE_URL = "https://api.anthropic.com/api/oauth/profile"
+PROFILE_EVERY = 3600.0  # the plan rarely changes: ask for it once an hour
+_profile_cache: dict = {"at": -PROFILE_EVERY, "data": None}
+
+_ORG_TYPES = {"claude_pro": "Pro", "claude_team": "Team", "claude_enterprise": "Enterprise", "claude_free": "Free"}
+
+
+def plan_name(profile: dict | None, signed_in_as: str | None) -> str | None:
+    """Current plan from the live profile; the credentials file only knows the plan at sign-in time.
+
+    Max comes in two sizes, told apart by the rate limit tier (…_max_5x / …_max_20x)."""
+    org = (profile or {}).get("organization") or {}
+    org_type, tier = org.get("organization_type") or "", org.get("rate_limit_tier") or ""
+    if org_type == "claude_max" or "max" in tier:
+        for size in ("20x", "5x"):
+            if f"max_{size}" in tier:
+                return f"Max ({size})"
+        return "Max"
+    if org_type in _ORG_TYPES:
+        return _ORG_TYPES[org_type]
+    return signed_in_as.capitalize() if signed_in_as else None
+
+
+def _get(url: str, token: str) -> dict:
+    req = urllib.request.Request(url, headers={
+        "Authorization": f"Bearer {token}", "anthropic-beta": "oauth-2025-04-20", "User-Agent": USER_AGENT})
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        return json.load(resp)
+
+
+def _profile(token: str) -> dict | None:
+    if time.monotonic() - _profile_cache["at"] >= PROFILE_EVERY:
+        try:
+            _profile_cache["data"] = _get(CLAUDE_PROFILE_URL, token)
+        except (OSError, ValueError) as err:
+            log.info("Claude profile not available: %s", err)
+        _profile_cache["at"] = time.monotonic()
+    return _profile_cache["data"]
+
+
 def fetch_claude_usage(credentials: Path = CLAUDE_CREDENTIALS) -> ClaudeUsage:
     """Plan usage of the Claude account Claude Code is logged in with on this PC.
 
@@ -146,14 +188,10 @@ def fetch_claude_usage(credentials: Path = CLAUDE_CREDENTIALS) -> ClaudeUsage:
         oauth = json.loads(credentials.read_text(encoding="utf-8"))["claudeAiOauth"]
     except (OSError, ValueError, KeyError):
         return ClaudeUsage(error="Not signed in to Claude Code")
-    request = urllib.request.Request(CLAUDE_USAGE_URL, headers={
-        "Authorization": f"Bearer {oauth.get('accessToken', '')}",
-        "anthropic-beta": "oauth-2025-04-20",
-        "User-Agent": USER_AGENT,
-    })
+    token = oauth.get("accessToken", "")
     try:
-        with urllib.request.urlopen(request, timeout=15) as resp:
-            return parse_claude_usage(json.load(resp), oauth.get("subscriptionType"))
+        usage = _get(CLAUDE_USAGE_URL, token)
+        return parse_claude_usage(usage, plan_name(_profile(token), oauth.get("subscriptionType")))
     except urllib.error.HTTPError as err:
         if err.code == 401:
             return ClaudeUsage(error="Sign-in expired – open Claude Code once")

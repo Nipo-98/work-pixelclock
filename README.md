@@ -201,6 +201,7 @@ The window's **X** only closes the window – the panel keeps being controlled. 
   token from `%USERPROFILE%\.claude\.credentials.json` and queries
   `api.anthropic.com/api/oauth/usage` (every 120 s by default). The token is only read – never
   changed or passed on.
+- The plan (Pro, Max (5x), Max (20x), Team …) is read live from your Claude profile once an hour – so an upgrade shows up without signing in to Claude Code again.
 - If the sign-in has expired, the panel says so – opening Claude Code once is enough.
 - Colours: green < 50 %, yellow < 80 %, red from 80 %.
 - Icon: Claude logo or **Clawd**, the mascot from Claude Code. Clawd is animated: he blinks, looks around, waves, hops and sits down (an ~8 s loop that runs on the panel itself; switch it off with *Animate Clawd*).

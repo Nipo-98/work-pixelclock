@@ -47,6 +47,32 @@ def test_parse_claude_usage():
     assert u.session_reset.hour == 18
 
 
+def _profile(org_type, tier, names=True):
+    org = {"organization_type": org_type, "rate_limit_tier": tier}
+    acc = {"has_claude_max": org_type == "claude_max", "has_claude_pro": org_type == "claude_pro"}
+    data = {"account": acc, "organization": org}
+    if names:
+        data["organization"]["plan_offer_copy"] = {"max5x": {"name": "Max"}, "max20x": {"name": "Ultra"}}
+    return data
+
+
+def test_plan_comes_from_the_live_profile_not_the_stale_sign_in_value():
+    # signed in as Pro, upgraded later: the credentials file still says "pro"
+    assert sources.plan_name(_profile("claude_max", "default_claude_max_5x"), "pro") == "Max (5x)"
+    assert sources.plan_name(_profile("claude_max", "default_claude_max_20x"), "pro") == "Max (20x)"
+    assert sources.plan_name(_profile("claude_max", "default_claude_max_20x", names=False), "pro") == "Max (20x)"
+    assert sources.plan_name(_profile("claude_max", "default_claude_max"), "pro") == "Max"
+    assert sources.plan_name(_profile("claude_pro", "default_claude_ai"), "pro") == "Pro"
+    assert sources.plan_name(_profile("claude_team", "default_claude_ai"), None) == "Team"
+    assert sources.plan_name(_profile("claude_enterprise", "x"), None) == "Enterprise"
+
+
+def test_plan_falls_back_to_the_sign_in_value():
+    assert sources.plan_name(None, "max") == "Max"
+    assert sources.plan_name({}, "pro") == "Pro"
+    assert sources.plan_name(None, None) is None
+
+
 def test_split_emoji():
     assert pages.split_emoji("Kaffee ☕ Pause") == ("Kaffee Pause", "☕")
     assert pages.split_emoji("❤️ Liebe") == ("Liebe", "❤️")
