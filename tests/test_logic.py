@@ -58,6 +58,22 @@ def test_emoji_icon_is_16px():
     assert icon is not None and icon.size == (16, 16)
 
 
+def test_clawd_icon_has_eyes_and_legs():
+    img = pages.load_icon("clawd")
+    assert img.size == (16, 10)
+    assert img.getpixel((4, 2))[3] == 0 and img.getpixel((11, 2))[3] == 0  # eyes are holes
+    assert img.getpixel((0, 4))[:3] == pages.CLAUDE_ORANGE  # arms reach the edges
+    assert img.getpixel((3, 8))[3] == 255 and img.getpixel((4, 8))[3] == 0  # separate legs
+
+
+def test_claude_page_logo_choice():
+    ctx = pages.Context(claude=sources.ClaudeUsage(session=50, week=40))
+    for logo in ("claude", "clawd"):
+        page = {**config.new_page("claude"), "logo": logo}
+        out = pages.render_page(page, ctx, 64, 16, datetime(2026, 11, 3, 14, 5))
+        assert out.frames[0].size == (64, 16)
+
+
 def test_wmo_icon():
     assert sources.wmo_icon(0) == "sun"
     assert sources.wmo_icon(0, is_day=False) == "moon"
@@ -99,13 +115,15 @@ def _row(img, y, x0=0, x1=None):
 @pytest.mark.parametrize("bars", [1, 2, 3])
 def test_status_bars_have_the_chosen_width_and_do_not_cover_content(bars):
     page = config.new_page("text")
-    inner = pages.render_page(page, pages.Context(), 64 - 2 * bars, 16, NOW)
+    inner = pages.render_page(page, pages.Context(), pages.inner_width(64, bars), 16, NOW)
     framed = pages.with_status_bars(inner, GREEN, bars)
     f = framed.frames[0]
     assert f.size == (64, 16)
     for x in list(range(bars)) + list(range(64 - bars, 64)):
         assert all(f.getpixel((x, y)) == GREEN for y in range(16))
-    assert f.crop((bars, 0, 64 - bars, 16)).tobytes() == inner.frames[0].tobytes()
+    for x in (bars, 63 - bars):  # one dark column between stripe and content (emoji, icons)
+        assert all(f.getpixel((x, y)) == (0, 0, 0) for y in range(16))
+    assert f.crop((bars + 1, 0, 63 - bars, 16)).tobytes() == inner.frames[0].tobytes()
 
 
 def test_clock_digits_keep_a_gap_above_the_weekday_bar():

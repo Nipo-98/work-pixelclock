@@ -8,16 +8,15 @@ import sys
 from io import BytesIO
 
 from PIL import Image
-from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QColor, QIcon, QImage, QMovie, QPixmap
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QSize, Qt, QTime, QTimer, Signal
+from PySide6.QtGui import QAction, QColor, QFont, QFontDatabase, QIcon, QImage, QMovie, QPainter, QPixmap
 from PySide6.QtWidgets import (
-    QApplication, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFormLayout, QGroupBox, QHBoxLayout,
-    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton,
-    QSlider, QSpinBox, QSystemTrayIcon, QTabWidget, QTimeEdit, QToolButton, QVBoxLayout, QWidget,
+    QApplication, QCheckBox, QColorDialog, QComboBox, QFileDialog, QFormLayout, QFrame, QGroupBox, QHBoxLayout,
+    QLabel, QLineEdit, QListWidget, QListWidgetItem, QMainWindow, QMenu, QMessageBox, QPushButton, QScrollArea,
+    QSlider, QSpinBox, QStackedWidget, QSystemTrayIcon, QTimeEdit, QToolButton, QVBoxLayout, QWidget,
 )
-from PySide6.QtCore import QTime
 
-from . import autostart, config, sources, transitions
+from . import autostart, calendars, config, pages, sources, theme, transitions
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -31,7 +30,7 @@ ORIENTATIONS_DE = {"landscape": "Normal", "upside_down": "Auf dem Kopf",
                    "portrait_left": "Hochkant (links oben)", "portrait_right": "Hochkant (rechts oben)"}
 CLAUDE_SHOW = {"both": "Sitzung (5 h) + Woche", "session": "Nur Sitzung (5 h) mit Balken",
                "week": "Nur Woche mit Balken"}
-PREVIEW_WIDTH = 512
+PREVIEW_WIDTH = 640
 
 
 def app_icon() -> QIcon:
@@ -46,6 +45,34 @@ def app_icon() -> QIcon:
         img = img.resize((size, size), Image.Resampling.NEAREST)
         icon.addPixmap(pil_to_pixmap(img))
     return icon
+
+
+def glyph_icon(glyph: str, color: str = theme.TEXT) -> QIcon:
+    """Icon from the Windows 11 symbol font (Segoe Fluent Icons); empty icon where it is missing."""
+    family = next((f for f in ("Segoe Fluent Icons", "Segoe MDL2 Assets") if f in QFontDatabase.families()), None)
+    if family is None:
+        return QIcon()
+    icon = QIcon()
+    for mode, c in ((QIcon.Mode.Normal, color), (QIcon.Mode.Selected, theme.ACCENT)):
+        pm = QPixmap(40, 40)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        font = QFont(family)
+        font.setPixelSize(30)
+        p.setFont(font)
+        p.setPen(QColor(c))
+        p.drawText(pm.rect(), Qt.AlignmentFlag.AlignCenter, glyph)
+        p.end()
+        icon.addPixmap(pm, mode)
+    return icon
+
+
+def scrolled(widget: QWidget) -> QScrollArea:
+    area = QScrollArea()
+    area.setWidget(widget)
+    area.setWidgetResizable(True)
+    area.setFrameShape(QFrame.Shape.NoFrame)
+    return area
 
 
 def pil_to_pixmap(img: Image.Image) -> QPixmap:
@@ -74,7 +101,8 @@ class ColorButton(QPushButton):
         self.value = value or "#ffffff"
         self.setText(self.value)
         fg = "#000" if QColor(self.value).lightness() > 128 else "#fff"
-        self.setStyleSheet(f"background:{self.value}; color:{fg}; border:1px solid #555; padding:3px;")
+        self.setStyleSheet(f"background:{self.value}; color:{fg}; border:1px solid {theme.LINE}; "
+                           "border-radius:6px; padding:5px 8px;")
 
     def _pick(self) -> None:
         c = QColorDialog.getColor(QColor(self.value), self, "Farbe wählen")
@@ -207,6 +235,12 @@ class PageEditor(QWidget):
             show.setCurrentIndex(max(0, show.findData(page.get("show", "both"))))
             show.currentIndexChanged.connect(lambda _: self._set("show", show.currentData()))
             self.form.addRow("Anzeige", show)
+            logo = QComboBox()
+            for key, label in pages.CLAUDE_LOGOS.items():
+                logo.addItem(QIcon(pil_to_pixmap(pages.CUSTOM_ICONS[key]().resize((32, 32 * pages.CUSTOM_ICONS[key]().height // 16), Image.Resampling.NEAREST))), label, key)
+            logo.setCurrentIndex(max(0, logo.findData(page.get("logo", "claude"))))
+            logo.currentIndexChanged.connect(lambda _: self._set("logo", logo.currentData()))
+            self.form.addRow("Symbol", logo)
 
     def _browse_image(self, field: QLineEdit) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Bild wählen", "", "Bilder (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
@@ -241,96 +275,127 @@ class MainWindow(QMainWindow):
         self._quitting = False
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self._save_now)
 
-        central = QWidget()
-        root = QVBoxLayout(central)
-        root.addWidget(self._build_panel_box())
-        root.addWidget(self._build_preview())
-        tabs = QTabWidget()
-        tabs.addTab(self._build_now_tab(), "Sofort anzeigen")
-        tabs.addTab(self._build_pages_tab(), "Seiten (Rotation)")
-        tabs.addTab(self._build_live_tab(), "Teams && Claude")
-        tabs.addTab(self._build_calendar_tab(), "Kalender")
-        tabs.addTab(self._build_settings_tab(), "Einstellungen")
-        root.addWidget(tabs, 1)
+        central = QWidget(objectName="root")
+        outer = QHBoxLayout(central)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+
+        sidebar = QWidget(objectName="sidebar")
+        sidebar.setFixedWidth(200)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(12, 18, 12, 14)
+        brand = QLabel("Pixel Panel", objectName="brand")
+        side.addWidget(brand)
+        side.addSpacing(14)
+        self.nav = QListWidget(objectName="nav")
+        self.nav.setIconSize(QSize(18, 18))
+        side.addWidget(self.nav, 1)
+        self.conn_label = QLabel("Nicht verbunden", objectName="conn")
+        self.conn_label.setWordWrap(True)
+        side.addWidget(self.conn_label)
+        outer.addWidget(sidebar)
+
+        main = QWidget(objectName="main")
+        body = QVBoxLayout(main)
+        body.setContentsMargins(24, 20, 24, 16)
+        body.setSpacing(14)
+        body.addWidget(self._build_header())
+        self.stack = QStackedWidget()
+        sections = [
+            ("Anzeigen", "", scrolled(self._build_now_tab())),
+            ("Seiten", "", self._build_pages_tab()),
+            ("Verbindungen", "", scrolled(self._build_live_tab())),
+            ("Einstellungen", "", scrolled(self._build_settings_tab())),
+        ]
+        for title, glyph, widget in sections:
+            self.nav.addItem(QListWidgetItem(glyph_icon(glyph), title))
+            self.stack.addWidget(widget)
+        self.nav.currentRowChanged.connect(self.stack.setCurrentIndex)
+        self.nav.setCurrentRow(0)
+        body.addWidget(self.stack, 1)
+        outer.addWidget(main, 1)
         self.setCentralWidget(central)
 
         bridge.status.connect(self._on_status)
         bridge.preview.connect(self._on_preview)
         self._build_tray()
 
-    # --- top: connection, power, brightness ------------------------------------------------------
+    # --- header: the panel itself ---------------------------------------------------------------
 
-    def _build_panel_box(self) -> QGroupBox:
-        box = QGroupBox("Panel")
-        lay = QVBoxLayout(box)
-        row = QHBoxLayout()
-        self.conn_label = QLabel("Nicht verbunden")
-        self.conn_label.setStyleSheet("font-weight:bold")
-        self.devices = QComboBox()
-        self.devices.setMinimumWidth(230)
-        if self.cfg.get("address"):
-            self.devices.addItem(f"{self.cfg.get('name') or ''} ({self.cfg['address']})", self.cfg["address"])
-        scan = QPushButton("Suchen")
-        scan.clicked.connect(self._scan)
-        connect = QPushButton("Verbinden")
-        connect.clicked.connect(self._connect_selected)
-        row.addWidget(self.conn_label, 1)
-        row.addWidget(self.devices)
-        row.addWidget(scan)
-        row.addWidget(connect)
-        lay.addLayout(row)
+    def _build_header(self) -> QWidget:
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(10)
+        self.preview = QLabel(objectName="preview")
+        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview.setMinimumHeight(184)
+        lay.addWidget(self.preview)
 
         row = QHBoxLayout()
-        self.power = QCheckBox("Panel an")
-        self.power.setChecked(self.cfg.get("power", True))
-        self.power.toggled.connect(lambda v: self._set_cfg("power", v))
+        row.setSpacing(10)
+        self.showing = QLabel("", objectName="showing")
+        nxt = QPushButton("Nächste Seite")
+        nxt.setIcon(glyph_icon(""))
+        nxt.clicked.connect(self.engine.next_page)
+        sun = QLabel()
+        sun.setPixmap(glyph_icon("").pixmap(18, 18))
         self.brightness = QSlider(Qt.Orientation.Horizontal)
         self.brightness.setRange(1, 100)
+        self.brightness.setFixedWidth(180)
         self.brightness.setValue(int(self.cfg.get("brightness", 60)))
-        self.bright_label = QLabel(f"{self.brightness.value()} %")
+        self.brightness.setToolTip("Helligkeit")
+        self.bright_label = QLabel(f"{self.brightness.value()} %", objectName="muted")
+        self.bright_label.setFixedWidth(40)
         self.brightness.valueChanged.connect(lambda v: self.bright_label.setText(f"{v} %"))
         self.brightness.sliderReleased.connect(lambda: self._set_cfg("brightness", self.brightness.value()))
         self.brightness.valueChanged.connect(
             lambda v: None if self.brightness.isSliderDown() else self._set_cfg("brightness", v))
+        self.power = QPushButton(objectName="power")
+        self.power.setCheckable(True)
+        self.power.setIcon(glyph_icon(""))
+        self.power.setChecked(self.cfg.get("power", True))
+        self.power.setText("An" if self.power.isChecked() else "Aus")
+        self.power.toggled.connect(lambda v: (self.power.setText("An" if v else "Aus"), self._set_cfg("power", v)))
+        row.addWidget(self.showing, 1)
+        row.addWidget(nxt)
+        row.addSpacing(12)
+        row.addWidget(sun)
+        row.addWidget(self.brightness)
+        row.addWidget(self.bright_label)
+        row.addWidget(self.power)
+        lay.addLayout(row)
+        self.error_label = QLabel("", objectName="error")
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        lay.addWidget(self.error_label)
+        return w
+
+    def _build_panel_settings(self) -> QGroupBox:
+        box = QGroupBox("Panel")
+        form = QFormLayout(box)
+        row = QHBoxLayout()
+        self.devices = QComboBox()
+        self.devices.setMinimumWidth(260)
+        if self.cfg.get("address"):
+            self.devices.addItem(f"{self.cfg.get('name') or ''} ({self.cfg['address']})", self.cfg["address"])
+        scan = QPushButton("Suchen")
+        scan.clicked.connect(self._scan)
+        connect = QPushButton("Verbinden", objectName="primary")
+        connect.clicked.connect(self._connect_selected)
+        row.addWidget(self.devices, 1)
+        row.addWidget(scan)
+        row.addWidget(connect)
+        form.addRow("Gerät", row)
+        self.scan_info = QLabel("", objectName="muted")
+        form.addRow("", self.scan_info)
         orient = QComboBox()
         for key, label in ORIENTATIONS_DE.items():
             orient.addItem(label, key)
         orient.setCurrentIndex(max(0, orient.findData(self.cfg.get("orientation", "landscape"))))
         orient.currentIndexChanged.connect(lambda _: self._set_cfg("orientation", orient.currentData()))
-        row.addWidget(self.power)
-        row.addSpacing(16)
-        row.addWidget(QLabel("Helligkeit"))
-        row.addWidget(self.brightness, 1)
-        row.addWidget(self.bright_label)
-        row.addSpacing(16)
-        row.addWidget(QLabel("Ausrichtung"))
-        row.addWidget(orient)
-        lay.addLayout(row)
-        self.error_label = QLabel("")
-        self.error_label.setStyleSheet("color:#c33")
-        self.error_label.setWordWrap(True)
-        self.error_label.hide()
-        lay.addWidget(self.error_label)
+        form.addRow("Ausrichtung", orient)
         return box
-
-    def _build_preview(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
-        lay.setContentsMargins(0, 0, 0, 0)
-        self.preview = QLabel()
-        self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.preview.setMinimumHeight(140)
-        self.preview.setStyleSheet("background:#0b0b0e; border-radius:6px;")
-        row = QHBoxLayout()
-        self.showing = QLabel("")
-        nxt = QPushButton("Nächste Seite ▶")
-        nxt.clicked.connect(self.engine.next_page)
-        row.addWidget(QLabel("Auf dem Panel:"))
-        row.addWidget(self.showing, 1)
-        row.addWidget(nxt)
-        lay.addWidget(self.preview)
-        lay.addLayout(row)
-        return w
 
     # --- tab: show now ---------------------------------------------------------------------------
 
@@ -356,7 +421,7 @@ class MainWindow(QMainWindow):
         form.addRow("Effekt", self.now_effect)
         form.addRow("Dauer", self.now_secs)
         buttons = QHBoxLayout()
-        send = QPushButton("Anzeigen")
+        send = QPushButton("Anzeigen", objectName="primary")
         send.setDefault(True)
         send.clicked.connect(self._send_text)
         add = QPushButton("Als Seite in die Rotation")
@@ -555,9 +620,8 @@ class MainWindow(QMainWindow):
         grid.addStretch(1)
         form.addRow(states)
         hint = QLabel("Der Status wird aus der Teams-Logdatei gelesen – ohne Anmeldung oder Admin-Rechte. "
-                      "Er ändert sich, sobald Teams ihn selbst ändert.")
+                      "Er ändert sich, sobald Teams ihn selbst ändert.", objectName="hint")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#888")
         form.addRow(hint)
         lay.addWidget(box)
 
@@ -585,34 +649,58 @@ class MainWindow(QMainWindow):
         row.addStretch(1)
         form.addRow("Abfrage alle", row)
         hint = QLabel("Nutzt die Anmeldung von Claude Code auf diesem PC. „Sitzung“ ist das 5-Stunden-Limit, "
-                      "„Woche“ das Wochenlimit deines Abos – wie unter claude.ai › Einstellungen › Nutzung.")
+                      "„Woche“ das Wochenlimit deines Abos – wie unter claude.ai › Einstellungen › Nutzung.",
+                      objectName="hint")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#888")
         form.addRow(hint)
         lay.addWidget(box)
+        lay.addWidget(self._build_calendar_box())
         lay.addStretch(1)
         return w
 
     # --- tab: calendar --------------------------------------------------------------------------
 
-    def _build_calendar_tab(self) -> QWidget:
-        w = QWidget()
-        lay = QVBoxLayout(w)
+    def _build_calendar_box(self) -> QGroupBox:
         cal = self.cfg["calendar"]
-        box = QGroupBox("Microsoft-365-Kalender (Outlook)")
+        box = QGroupBox("Kalender")
         form = QFormLayout(box)
         en = QCheckBox("Nächstes Meeting abrufen")
         en.setChecked(cal.get("enabled", False))
         en.toggled.connect(lambda v: self._set_sub("calendar", "enabled", v))
         form.addRow("", en)
-        for key, label, hint in (("client_id", "Anwendungs-ID (Client)", "aus der App-Registrierung"),
-                                 ("tenant_id", "Verzeichnis-ID (Tenant)", "aus der App-Registrierung")):
+        provider = QComboBox()
+        for key, label in calendars.PROVIDERS.items():
+            provider.addItem(label, key)
+        provider.setCurrentIndex(max(0, provider.findData(cal.get("provider", "outlook"))))
+        form.addRow("Quelle", provider)
+
+        # one block of settings per source; only the chosen one is visible
+        outlook = QLabel("Liest den Kalender aus dem klassischen Outlook auf diesem PC – ohne Anmeldung. "
+                         "Outlook muss eingerichtet sein; es startet bei Bedarf unsichtbar im Hintergrund.",
+                         objectName="hint")
+        outlook.setWordWrap(True)
+        ics = QWidget()
+        ics_form = QFormLayout(ics)
+        ics_form.setContentsMargins(0, 0, 0, 0)
+        ics_url = QLineEdit(cal.get("ics_url", ""))
+        ics_url.setPlaceholderText("https://outlook.office365.com/owa/calendar/…/calendar.ics")
+        ics_url.editingFinished.connect(lambda: self._set_sub("calendar", "ics_url", ics_url.text().strip()))
+        ics_form.addRow("Link", ics_url)
+        ics_hint = QLabel("Outlook im Web › Einstellungen › Kalender › Freigegebene Kalender › Kalender "
+                          "veröffentlichen › ICS-Link kopieren. Wer den Link kennt, sieht die Termine.",
+                          objectName="hint")
+        ics_hint.setWordWrap(True)
+        ics_form.addRow(ics_hint)
+        graph = QWidget()
+        graph_form = QFormLayout(graph)
+        graph_form.setContentsMargins(0, 0, 0, 0)
+        for key, label in (("client_id", "Anwendungs-ID"), ("tenant_id", "Verzeichnis-ID")):
             field = QLineEdit(cal.get(key, ""))
-            field.setPlaceholderText(f"xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx – {hint}")
+            field.setPlaceholderText("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
             field.editingFinished.connect(lambda f=field, k=key: self._set_sub("calendar", k, f.text().strip()))
-            form.addRow(label, field)
+            graph_form.addRow(label, field)
         row = QHBoxLayout()
-        sign_in = QPushButton("Anmelden …")
+        sign_in = QPushButton("Anmelden", objectName="primary")
         sign_in.setToolTip("Öffnet die Microsoft-Anmeldung im Browser (einmalig)")
         sign_in.clicked.connect(self._calendar_sign_in)
         sign_out = QPushButton("Abmelden")
@@ -620,8 +708,23 @@ class MainWindow(QMainWindow):
         row.addWidget(sign_in)
         row.addWidget(sign_out)
         row.addStretch(1)
-        form.addRow("", row)
-        self.cal_status = QLabel("–")
+        graph_form.addRow("", row)
+        graph_hint = QLabel("Braucht eine App-Registrierung in eurem Microsoft-Verzeichnis (Anleitung im README).",
+                            objectName="hint")
+        graph_hint.setWordWrap(True)
+        graph_form.addRow(graph_hint)
+        blocks = {"outlook": outlook, "ics": ics, "graph": graph}
+        for block in blocks.values():
+            form.addRow(block)
+
+        def show_block() -> None:
+            for key, block in blocks.items():
+                block.setVisible(key == provider.currentData())
+
+        provider.currentIndexChanged.connect(lambda _: (show_block(), self._set_sub("calendar", "provider",
+                                                                                    provider.currentData())))
+        show_block()
+        self.cal_status = QLabel("–", objectName="muted")
         self.cal_status.setWordWrap(True)
         form.addRow("Status", self.cal_status)
         self.cal_next = QLabel("–")
@@ -635,16 +738,12 @@ class MainWindow(QMainWindow):
         remind.setValue(int(cal.get("remind_minutes", 5)))
         remind.valueChanged.connect(lambda v: self._set_sub("calendar", "remind_minutes", v))
         form.addRow("Erinnerung", remind)
-        hint = QLabel("Die Erinnerung zeigt kurz vor dem Meeting einen Countdown („in 4 Min“) – sie hat "
-                      "Vorrang vor Statuslicht und Rotation. Für die Seite „Nächstes Meeting“ in der Rotation: "
-                      "Tab „Seiten“ › „+ Seite“.\n\nDie IDs stammen aus einer App-Registrierung in Microsoft "
-                      "Entra ID (Anleitung im README). Gelesen wird nur dein Kalender (Recht Calendars.Read).")
+        hint = QLabel("Die Erinnerung zeigt kurz vor dem Meeting einen Countdown („in 4 Min“) und hat Vorrang "
+                      "vor Statuslicht und Rotation. Die Seite „Nächstes Meeting“ fügst du unter Seiten hinzu.",
+                      objectName="hint")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color:#888")
         form.addRow(hint)
-        lay.addWidget(box)
-        lay.addStretch(1)
-        return w
+        return box
 
     def _calendar_sign_in(self) -> None:
         self.cal_status.setText("Anmeldung im Browser läuft …")
@@ -671,6 +770,7 @@ class MainWindow(QMainWindow):
     def _build_settings_tab(self) -> QWidget:
         w = QWidget()
         lay = QVBoxLayout(w)
+        lay.addWidget(self._build_panel_settings())
         night = self.cfg["night"]
         box = QGroupBox("Nachtmodus")
         form = QFormLayout(box)
@@ -717,7 +817,7 @@ class MainWindow(QMainWindow):
         mini.toggled.connect(lambda v: self._set_cfg("start_minimized", v))
         form.addRow("", mini)
         path = QLabel(f"Einstellungen: {config.CONFIG_FILE}")
-        path.setStyleSheet("color:#888")
+        path.setObjectName("hint")
         path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         form.addRow(path)
         lay.addWidget(box)
@@ -772,7 +872,7 @@ class MainWindow(QMainWindow):
     # --- connection ------------------------------------------------------------------------------
 
     def _scan(self) -> None:
-        self.conn_label.setText("Suche Panels …")
+        self.scan_info.setText("Suche Panels …")
         fut = self.engine.scan()
 
         def done() -> None:
@@ -782,13 +882,13 @@ class MainWindow(QMainWindow):
             try:
                 panels = fut.result()
             except Exception as err:  # noqa: BLE001
-                self.conn_label.setText(f"Suche fehlgeschlagen: {err}")
+                self.scan_info.setText(f"Suche fehlgeschlagen: {err}")
                 return
             self.devices.clear()
             for address, name, rssi in panels:
                 self.devices.addItem(f"{name} ({address}, {rssi} dBm)", (address, name))
-            self.conn_label.setText(f"{len(panels)} Panel(s) gefunden" if panels else
-                                    "Kein Panel gefunden – ist es an und nicht mit der App verbunden?")
+            self.scan_info.setText(f"{len(panels)} Panel(s) gefunden" if panels else
+                                   "Kein Panel gefunden. Ist es eingeschaltet und die Handy-App geschlossen?")
             if len(panels) == 1:
                 self._connect_selected()
 
@@ -807,9 +907,10 @@ class MainWindow(QMainWindow):
     # --- engine callbacks ------------------------------------------------------------------------
 
     def _on_status(self, st: Status) -> None:
-        self.conn_label.setText(st.connection)
-        self.conn_label.setStyleSheet(f"font-weight:bold; color:{'#2a2' if st.connected else '#c80'}")
-        self.showing.setText(st.showing)
+        self.conn_label.setText(f"●  {st.connection}")
+        self.conn_label.setProperty("ok", st.connected)
+        self.conn_label.style().polish(self.conn_label)
+        self.showing.setText(f"Auf dem Panel: {st.showing}" if st.showing else "")
         self.error_label.setVisible(bool(st.error))
         self.error_label.setText(st.error or "")
         label, color = sources.teams_label(st.teams)
@@ -929,6 +1030,8 @@ def run(start_hidden: bool = False) -> int:
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Pixel Panel")
     app.setQuitOnLastWindowClosed(False)
+    app.setStyle("Fusion")  # the native Windows style ignores parts of the stylesheet
+    app.setStyleSheet(theme.stylesheet(config.APP_DIR))
     app.setWindowIcon(app_icon())
 
     from PySide6.QtCore import QLockFile

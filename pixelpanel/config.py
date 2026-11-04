@@ -35,7 +35,7 @@ PAGE_DEFAULTS: dict[str, dict] = {
     "image": {"path": ""},
     "weather": {"color": "#ffffff", "effect": "none"},
     "teams": {},
-    "claude": {"show": "both"},
+    "claude": {"show": "both", "logo": "claude"},
     "calendar": {},
 }
 
@@ -66,8 +66,10 @@ def default_config() -> dict:
             "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
         },
         "claude": {"enabled": True, "interval": 120},
-        # Microsoft 365 calendar via Graph; client/tenant id come from the org's app registration
-        "calendar": {"enabled": False, "client_id": "", "tenant_id": "", "remind_minutes": 5},
+        # provider: "outlook" (classic Outlook on this PC), "ics" (calendar link) or "graph"
+        # (Microsoft 365 sign-in; client/tenant id from an app registration)
+        "calendar": {"enabled": False, "provider": "outlook", "ics_url": "", "client_id": "", "tenant_id": "",
+                     "remind_minutes": 5},
         "weather": {"city": "", "lat": None, "lon": None},
         "night": {"enabled": False, "start": "22:00", "end": "07:00", "brightness": 5},
         "autostart": False,

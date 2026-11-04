@@ -16,7 +16,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import ble, m365, pages, sources, transitions
+from . import ble, calendars, m365, pages, sources, transitions
 from .config import PAGE_TYPES
 from .core import protocol as proto
 from .core import render
@@ -125,8 +125,12 @@ class Engine:
         if cfg.get("weather", {}).get("lat") != self._applied.get("lat"):
             self._next_weather = 0
         cal = cfg.get("calendar", {})
-        if (cal.get("client_id", "").strip(), cal.get("tenant_id", "").strip()) != self._calendar_ids:
-            self._next_calendar = 0
+        cal_key = (cal.get("enabled"), cal.get("provider"), cal.get("ics_url"), cal.get("client_id"), cal.get("tenant_id"))
+        if cal_key != self._applied.get("calendar"):
+            self._applied["calendar"] = cal_key
+            self._next_calendar = 0  # source changed: fetch now
+            if not cal.get("enabled"):
+                self.ctx.meeting = None
         self._next_connect = 0
         self._wake()
 
@@ -256,13 +260,22 @@ class Engine:
             self._next_claude = now_m + max(30, int(cfg["claude"].get("interval", 120)))
             self.ctx.claude, changed = await asyncio.to_thread(sources.fetch_claude_usage), True
         cal_cfg = cfg.get("calendar", {})
-        if cal_cfg.get("enabled") and cal_cfg.get("client_id") and now_m >= self._next_calendar:
+        provider = cal_cfg.get("provider", "outlook")
+        ready = {"graph": cal_cfg.get("client_id"), "ics": cal_cfg.get("ics_url")}.get(provider, True)
+        if cal_cfg.get("enabled") and ready and now_m >= self._next_calendar:
             self._next_calendar = now_m + CALENDAR_EVERY
             changed = True
             try:
-                cal = self._get_calendar()
-                self.ctx.meeting = await asyncio.to_thread(cal.fetch)
-                self.status.calendar = f"Angemeldet als {await asyncio.to_thread(cal.account)}"
+                if provider == "outlook":
+                    self.ctx.meeting = await asyncio.to_thread(calendars.fetch_outlook)
+                    self.status.calendar = "Liest den Kalender aus Outlook auf diesem PC"
+                elif provider == "ics":
+                    self.ctx.meeting = await asyncio.to_thread(calendars.fetch_ics, cal_cfg["ics_url"])
+                    self.status.calendar = "Kalender-Link wird gelesen"
+                else:
+                    cal = self._get_calendar()
+                    self.ctx.meeting = await asyncio.to_thread(cal.fetch)
+                    self.status.calendar = f"Angemeldet als {await asyncio.to_thread(cal.account)}"
             except PermissionError:
                 self.ctx.meeting, self.status.calendar = None, "Nicht angemeldet – „Anmelden“ klicken"
             except urllib.error.HTTPError as err:
@@ -308,7 +321,7 @@ class Engine:
         self.status.connected = connected
         name = cfg.get("name") or cfg.get("address")
         self.status.connection = f"Verbunden mit {name}" if connected else "Getrennt"
-        self._applied = {"lat": self._applied.get("lat")}
+        self._applied = {"lat": self._applied.get("lat"), "calendar": self._applied.get("calendar")}
         if connected:  # connect() set the clock already
             self._applied["time_synced"] = datetime.now().date()
         self._shown = _Shown()
@@ -410,7 +423,7 @@ class Engine:
         if light:
             out = render.render_screen(pages.teams_screen(self.ctx.teams, light=True), vw, vh)
         else:
-            out = await asyncio.to_thread(pages.render_page, page, self.ctx, vw - 2 * bars, vh, now)
+            out = await asyncio.to_thread(pages.render_page, page, self.ctx, pages.inner_width(vw, bars), vh, now)
             if frame and isinstance(out, Rendered):  # (the built-in clock has no picture to frame)
                 out = pages.with_status_bars(out, frame, bars)
         if isinstance(out, Rendered) and self._rot_min and out.scroll_ms and page is not None:
@@ -419,7 +432,7 @@ class Engine:
         if need_preview:
             self._preview_key = key
             if isinstance(out, Rendered):
-                data, mime = await asyncio.to_thread(render.preview, out)
+                data, mime = await asyncio.to_thread(pages.led_preview, out, 10)
                 self.on_preview(data, mime, label)
             else:
                 self.on_preview(b"", "native", out.label)

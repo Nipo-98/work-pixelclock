@@ -3,5 +3,8 @@ bleak
 pillow
 msal
 msal-extensions
+pywin32
+icalendar
+recurring-ical-events
 pyinstaller
 pytest

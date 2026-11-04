@@ -69,6 +69,31 @@ def claude_icon() -> Image.Image:
     return img
 
 
+# Clawd, Claude Code's mascot, from its terminal art "▐▛███▜▌ / ▝▜█████▛▘ / ▘▘ ▝▝":
+# every quadrant block is one pixel wide and two tall (terminal cells are twice as tall as wide)
+_CLAWD = [
+    "..XXXXXXXXXXXX..",
+    "..XX.XXXXXX.XX..",
+    "XXXXXXXXXXXXXXXX",
+    "..XXXXXXXXXXXX..",
+    "...X.X....X.X...",
+]
+
+
+def clawd_icon() -> Image.Image:
+    img = Image.new("RGBA", (16, 10), (0, 0, 0, 0))
+    for y, row in enumerate(_CLAWD):
+        for x, c in enumerate(row):
+            if c == "X":
+                img.putpixel((x, 2 * y), CLAUDE_ORANGE + (255,))
+                img.putpixel((x, 2 * y + 1), CLAUDE_ORANGE + (255,))
+    return img
+
+
+CUSTOM_ICONS = {"claude": claude_icon, "clawd": clawd_icon}
+CLAUDE_LOGOS = {"claude": "Claude-Logo", "clawd": "Clawd (Maskottchen)"}
+
+
 def dot_icon(color: tuple[int, int, int], size: int = 16) -> Image.Image:
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     m = max(1, size // 8)
@@ -130,6 +155,8 @@ def load_icon(spec: str | None, size: int = 16) -> Image.Image | None:
     spec = (spec or "").strip()
     if not spec or spec == "none":
         return None
+    if spec in CUSTOM_ICONS:
+        return CUSTOM_ICONS[spec]()
     if (img := icons.builtin_icon(spec)) is not None:
         return img
     if spec.startswith("lm:") or spec.isdigit():
@@ -163,21 +190,32 @@ def teams_screen(state: str | None, light: bool) -> Screen:
     return Screen([Line(label, color)], icon=dot_icon(color), big=False)
 
 
+BAR_GAP = 1  # dark column between a status stripe and the page, so icons never touch the stripe
+
+
+def inner_width(width: int, bars: int) -> int:
+    """Width left for the page next to status stripes of `bars` px (plus their gap)."""
+    return width - 2 * (bars + BAR_GAP) if bars else width
+
+
 def with_status_bars(inner: Rendered, color: tuple[int, int, int], bars: int) -> Rendered:
-    """Put `bars` px wide stripes in `color` left and right of a picture drawn `2 * bars` narrower.
+    """Put `bars` px wide stripes in `color` left and right of a page drawn `inner_width` wide.
 
     The page is drawn narrower instead of painting over it, so the stripes never cover content.
     Only the sides: two text lines need all 16 rows, a top/bottom border would cut them."""
     framed = []
     for f in inner.frames:
-        out = Image.new("RGB", (f.width + 2 * bars, f.height), color)
-        out.paste(f, (bars, 0))
+        out = Image.new("RGB", (f.width + 2 * (bars + BAR_GAP), f.height), render.BLACK)
+        draw = ImageDraw.Draw(out)
+        draw.rectangle((0, 0, bars - 1, f.height - 1), fill=color)
+        draw.rectangle((out.width - bars, 0, out.width - 1, f.height - 1), fill=color)
+        out.paste(f, (bars + BAR_GAP, 0))
         framed.append(out)
     return Rendered(framed, inner.durations, inner.scrolls, inner.valid_until)
 
 
-def claude_screen(usage: sources.ClaudeUsage | None, show: str) -> Screen:
-    icon = claude_icon()
+def claude_screen(usage: sources.ClaudeUsage | None, show: str, logo: str = "claude") -> Screen:
+    icon = CUSTOM_ICONS.get(logo, claude_icon)()
     if usage is None:
         return Screen([Line("Claude ...", CLAUDE_ORANGE)], icon=icon, big=False)
     if usage.error:
@@ -194,6 +232,41 @@ def claude_screen(usage: sources.ClaudeUsage | None, show: str) -> Screen:
                       progress=usage.week or 0, progress_color=usage_color(usage.week))
     return Screen([Line(f"5h {pct(usage.session)}", usage_color(usage.session)),
                    Line(f"Wo {pct(usage.week)}", usage_color(usage.week))], icon=icon)
+
+
+LED_UNLIT = (44, 50, 66)
+LED_BACK = (20, 23, 31)
+
+
+@lru_cache(maxsize=8)
+def _dot_mask(w: int, h: int, cell: int) -> Image.Image:
+    tile = Image.new("L", (cell, cell), 0)
+    m = max(1, cell // 8)
+    ImageDraw.Draw(tile).ellipse((m, m, cell - 1 - m, cell - 1 - m), fill=255)
+    mask = Image.new("L", (w * cell, h * cell), 0)
+    for x in range(w):
+        for y in range(h):
+            mask.paste(tile, (x * cell, y * cell))
+    return mask
+
+
+def led_preview(rendered: Rendered, cell: int = 8) -> tuple[bytes, str]:
+    """Preview that looks like the panel: round LEDs, unlit ones faintly visible."""
+    if rendered.animated and len(rendered.frames) > 2:  # half the frames, twice as long: lighter GIF
+        rendered = Rendered(rendered.frames[::2], [d * 2 for d in rendered.durations[::2]])
+    w, h = rendered.frames[0].size
+    dots = _dot_mask(w, h, cell)
+    out = []
+    for f in rendered.frames:
+        big = f.convert("RGB").resize((w * cell, h * cell), Image.Resampling.NEAREST)
+        lit = big.convert("L").point(lambda v: 255 if v > 8 else 0)
+        leds = Image.new("RGB", big.size, LED_UNLIT)
+        leds.paste(big, mask=lit)
+        frame = Image.new("RGB", big.size, LED_BACK)
+        frame.paste(leds, mask=dots)
+        out.append(frame)
+    data, is_gif = render.encode(Rendered(out, rendered.durations if len(out) > 1 else []))
+    return data, "image/gif" if is_gif else "image/png"
 
 
 CAL_COLOR = (0, 200, 230)
@@ -273,7 +346,7 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
     elif t == "teams":
         screen = teams_screen(ctx.teams, light=False)
     elif t == "claude":
-        screen = claude_screen(ctx.claude, page.get("show", "both"))
+        screen = claude_screen(ctx.claude, page.get("show", "both"), page.get("logo", "claude"))
     elif t == "calendar":
         screen = calendar_screen(ctx.meeting, now, remind=bool(page.get("remind")))
     else:

@@ -38,7 +38,7 @@ Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichent
 | **Seiten-Rotation** | Beliebig viele Seiten, die nacheinander durchlaufen: Uhr, Datum, Text/Emoji, Bild/GIF, Wetter, Teams-Status, Claude-Nutzung – jede mit eigener Anzeigedauer, per Haken an/aus, sortierbar |
 | **Teams-Status** | Farbige Statusleiste am Rand jeder Seite; bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
 | **Claude-Nutzung** | Prozent der 5-Stunden-Sitzung und des Wochenlimits deines Claude-Abos, farbig (grün/gelb/rot) |
-| **Kalender** | Nächstes Meeting aus Microsoft 365 (Outlook), Countdown-Erinnerung kurz vor Beginn |
+| **Kalender** | Nächstes Meeting aus Outlook (ohne Anmeldung), einem Kalender-Link oder Microsoft 365, Countdown-Erinnerung kurz vor Beginn |
 | **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
 | **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
 | **Übergänge** | Seitenwechsel springen, schieben, einschießen, überblenden, wischen, auflösen – oder mit **Nyan Cat** |
@@ -71,13 +71,11 @@ Das Panel muss **nicht** in den Windows-Bluetooth-Einstellungen gekoppelt werden
 
 ## Bedienung
 
-### Oberer Bereich: Panel und Vorschau
+Links die Navigation (**Anzeigen**, **Seiten**, **Verbindungen**, **Einstellungen**) und darunter
+der Verbindungsstatus. Oben steht immer die **Live-Vorschau** – sie sieht aus wie das Panel selbst
+(runde LEDs, auch Animationen) – mit **Nächste Seite**, **Helligkeit** und **An/Aus**.
 
-Verbindungsstatus, Panel-Auswahl (**Suchen** / **Verbinden**), **Panel an**, **Helligkeit** und
-**Ausrichtung**. Darunter eine Live-Vorschau dessen, was gerade auf dem Panel zu sehen ist – auch
-Animationen. **Nächste Seite ▶** springt in der Rotation weiter.
-
-### Tab „Sofort anzeigen“
+### Anzeigen
 
 ![Sofort anzeigen](docs/images/app-sofort.png)
 
@@ -90,7 +88,7 @@ Animationen. **Nächste Seite ▶** springt in der Rotation weiter.
 - **Bild / GIF anzeigen…** – wird auf die Panelgröße verkleinert, GIFs laufen animiert.
 - **Eingebaute Uhr anzeigen** – eines der 9 Uhr-Designs, die das Panel selbst kann.
 
-### Tab „Seiten (Rotation)“
+### Seiten (Rotation)
 
 ![Seiten](docs/images/app-seiten.png)
 
@@ -106,7 +104,8 @@ neue Seite über **+ Seite**. Rechts die Einstellungen der gewählten Seite:
 | **Bild / GIF** | Datei |
 | **Wetter** | Farbe, Effekt (Ort unter *Einstellungen*) |
 | **Teams-Status** | farbiger Punkt + Status |
-| **Claude-Nutzung** | Sitzung + Woche, nur Sitzung oder nur Woche (mit Balken) |
+| **Claude-Nutzung** | Sitzung + Woche, nur Sitzung oder nur Woche (mit Balken); Symbol: Claude-Logo oder **Clawd** |
+| **Nächstes Meeting** | Uhrzeit und Titel des nächsten Termins (Quelle unter *Verbindungen*) |
 
 Laufschrift wird immer mindestens einmal komplett gezeigt, auch wenn die Anzeigedauer kürzer ist.
 
@@ -128,17 +127,22 @@ Seite zählt erst, wenn sie vollständig da ist.
 - ein Emoji, z. B. `🚀`
 - einen eingebauten Namen, z. B. `heart`, `house`, `coffee`, `bell`, `car`, `music`, `star` …
 - ein LaMetric-Icon: `lm:2867` (Nummer von [developer.lametric.com/icons](https://developer.lametric.com/icons))
+- `claude` (Claude-Logo) oder `clawd` (Clawd, das Maskottchen von Claude Code)
 - eine Bilddatei (Knopf **…**)
 
-### Tab „Teams & Claude“
+### Verbindungen
 
-![Teams und Claude](docs/images/app-teams-claude.png)
+![Verbindungen](docs/images/app-verbindungen.png)
 
-### Tab „Einstellungen“
+Alles, was Daten von außen holt: **Microsoft Teams**, **Claude-Nutzung** und **Kalender** – weitere
+Dienste kommen hier dazu.
+
+### Einstellungen
 
 ![Einstellungen](docs/images/app-einstellungen.png)
 
-Nachtmodus (Zeitraum + Helligkeit), Wetter-Ort, **Mit Windows starten**, **Minimiert starten**.
+Panel (Gerät suchen/verbinden, Ausrichtung), Nachtmodus (Zeitraum + Helligkeit), Wetter-Ort,
+**Mit Windows starten**, **Minimiert starten**.
 
 ### Taskleisten-Symbol
 
@@ -160,12 +164,13 @@ Teams-Statuslicht an/aus, **Beenden**.
   Admin-Rechte; geprüft wird alle 2 Sekunden.
 - **Statusleiste:** Solange die Rotation läuft, hat jede Seite links und rechts einen Streifen
   in der Teams-Farbe – der Status ist also immer sichtbar, ohne die Rotation anzuhalten. Breite
-  **1, 2 oder 3 Pixel** einstellbar (Standard 2), abschaltbar unter *Teams & Claude*. Die Seite
-  wird dafür entsprechend schmaler gezeichnet, die Streifen überdecken also nichts.
+  **1, 2 oder 3 Pixel** einstellbar (Standard 2), abschaltbar unter *Verbindungen*. Die Seite
+  wird dafür schmaler gezeichnet und hält 1 Pixel Abstand – die Streifen überdecken nichts und
+  Icons stoßen nicht an.
 
   ![Statusleiste](docs/images/teams-rahmen.png)
 
-- **Statuslicht:** Unter *Teams & Claude* legst du fest, **bei welchen Status** das ganze Panel
+- **Statuslicht:** Unter *Verbindungen* legst du fest, **bei welchen Status** das ganze Panel
   leuchtet und die Rotation pausiert (Standard: Beschäftigt, Im Anruf, Im Meeting, Am Telefon,
   Präsentiert, Nicht stören). **Nur Status anhaken, bei denen die Rotation wirklich anhalten
   soll** – wer „Verfügbar“ anhakt, hat dauerhaft Statuslicht und keine Rotation mehr.
@@ -187,6 +192,9 @@ Teams-Statuslicht an/aus, **Beenden**.
   verändert oder weitergegeben.
 - Ist die Anmeldung abgelaufen, steht ein Hinweis auf dem Panel – einmal Claude Code öffnen genügt.
 - Farben: grün < 50 %, gelb < 80 %, rot ab 80 %.
+- Symbol wählbar: Claude-Logo oder **Clawd**, das Maskottchen aus Claude Code.
+
+  ![Clawd](docs/images/clawd.png)
 
 ---
 
@@ -201,13 +209,19 @@ Teams-Statuslicht an/aus, **Beenden**.
 - **Erinnerung:** X Minuten vor Beginn (Standard 5) erscheint ein Countdown „in 4 Min“ – mit
   Vorrang vor Statuslicht und Rotation.
 - Nicht gezählt werden abgesagte, abgelehnte, ganztägige und als „frei“ eingetragene Termine.
-- Daten aus deinem **Microsoft-365-Kalender** über Microsoft Graph, Abruf alle 5 Minuten.
-  Funktioniert mit dem neuen und dem klassischen Outlook.
+- Abruf alle 5 Minuten. Unter *Verbindungen › Kalender* wählst du die **Quelle**:
 
-### Einrichtung: App-Registrierung (einmalig, ggf. durch die IT)
+| Quelle | Anmeldung | Voraussetzung |
+|---|---|---|
+| **Outlook auf diesem PC** (Standard) | keine | Klassisches Outlook ist installiert und eingerichtet (auch wenn man sonst das neue Outlook nutzt). Es wird bei Bedarf unsichtbar gestartet und nur gelesen. |
+| **Kalender-Link (ICS)** | keine | In Outlook im Web › Einstellungen › Kalender › Freigegebene Kalender › *Kalender veröffentlichen* einen ICS-Link erzeugen (z. B. „Kann Titel und Orte anzeigen“). Wer den Link kennt, sieht die Termine; manche Firmen schalten das ab. |
+| **Microsoft 365 (Anmeldung)** | einmalig im Browser | App-Registrierung, siehe unten |
 
-Für die Anmeldung braucht es eine App-Registrierung im Microsoft-Entra-Mandanten der Firma.
-Darf man das nicht selbst, die IT mit genau diesen Angaben bitten:
+### Microsoft 365: App-Registrierung (einmalig, ggf. durch die IT)
+
+Microsoft lässt Programme nur mit einer registrierten App-ID anmelden – ein reiner „Anmelden“-Knopf
+ohne Registrierung ist nicht möglich. Darf man in der Firma keine Apps registrieren, die IT mit
+genau diesen Angaben bitten – oder eine der Quellen ohne Anmeldung nutzen:
 
 1. [Entra Admin Center](https://entra.microsoft.com) › **Anwendungen › App-Registrierungen ›
    Neue Registrierung**
@@ -221,8 +235,8 @@ Darf man das nicht selbst, die IT mit genau diesen Angaben bitten:
    Mandanten nicht selbst zustimmen dürfen: **Administratorzustimmung erteilen**.
 4. Auf der Übersichtsseite **Anwendungs-ID (Client)** und **Verzeichnis-ID (Mandant)** kopieren.
 
-In Pixel Panel › Tab **Kalender**: beide IDs eintragen, *Nächstes Meeting abrufen* anhaken,
-**Anmelden …** – der Browser öffnet die normale Microsoft-Anmeldung. Danach bleibt man angemeldet
+In Pixel Panel › *Verbindungen › Kalender*: Quelle **Microsoft 365** wählen, beide IDs eintragen,
+*Nächstes Meeting abrufen* anhaken, **Anmelden** – der Browser öffnet die normale Microsoft-Anmeldung. Danach bleibt man angemeldet
 (Token verschlüsselt mit Windows-DPAPI in `%APPDATA%\PixelPanel\m365_token.bin`; **Abmelden**
 löscht es). Die App kann nur lesen, nichts ändern oder senden.
 
@@ -256,7 +270,7 @@ Zum Zurücksetzen Programm beenden und `config.json` löschen.
 | **Kein Panel gefunden** | Panel an? Handy-App geschlossen / Handy-Bluetooth aus? (Ein verbundenes Panel ist für andere unsichtbar.) Bluetooth am PC an? Näher ran. |
 | **„Panel nicht erreichbar – neuer Versuch läuft“** | Programm versucht es alle 15 s erneut. Panel kurz vom Strom trennen hilft meistens. |
 | **Handy-App verbindet nicht mehr** | Pixel Panel über das Taskleisten-Symbol **beenden** – dann ist das Panel wieder frei. |
-| **Rotation läuft nicht / Panel hängt auf einem Teams-Status** | Unter *Teams & Claude* beim Statuslicht nur „Beschäftigt“-artige Status anhaken (nicht „Verfügbar“), und unter *Seiten* mindestens zwei Seiten anhaken. |
+| **Rotation läuft nicht / Panel hängt auf einem Teams-Status** | Unter *Verbindungen* beim Statuslicht nur „Beschäftigt“-artige Status anhaken (nicht „Verfügbar“), und unter *Seiten* mindestens zwei Seiten anhaken. |
 | **Teams-Status bleibt „noch kein Status“** | Nur der neue Teams-Client wird unterstützt. Status einmal in Teams ändern, dann taucht er im Log auf. |
 | **Claude: „Nicht in Claude Code angemeldet“ / „Anmeldung abgelaufen“** | Claude Code starten und ggf. `/login`. |
 | **„Pixel Panel läuft bereits“** | Es läuft schon eine Instanz – Symbol in der Taskleiste (ggf. unter ^). |
@@ -300,6 +314,8 @@ pixelpanel/
   transitions.py  Übergänge zwischen Seiten (inkl. Nyan Cat)
   sources.py      Teams-Log, Claude-Nutzung, Wetter (Open-Meteo)
   m365.py         Microsoft-365-Kalender (MSAL-Anmeldung, Graph calendarView)
+  calendars.py    Kalender ohne Anmeldung: klassisches Outlook (COM) und ICS-Link
+  theme.py        Farben und Stylesheet der Oberfläche
   config.py       Einstellungen (JSON in %APPDATA%\PixelPanel)
   autostart.py    Start mit Windows (Registry, ohne Admin)
   core/           Protokoll, Pixelschrift, Icons, Effekte, Zeichnen – aus ha-pixelclock
