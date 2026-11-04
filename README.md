@@ -7,10 +7,6 @@ replaces the "iPixels" phone app entirely. Besides text, emojis, images and cloc
 
 ![Panel pages](docs/images/pages.png)
 
-Built and tested with the "LED flexible fun screen" from Action (Briloner LED drawing board,
-article 3226274): 64 × 16 RGB LEDs, USB powered, Bluetooth name `LED_BLE_…`. Other iPixel Color
-panels (32 × 16 up to 448 × 32) speak the same protocol; the app reads the size from the panel.
-
 **Download:** [latest release](https://github.com/Nipo-98/work-pixelclock/releases/latest) –
 a single `PixelPanel.exe`, no installation needed.
 
@@ -19,6 +15,7 @@ a single `PixelPanel.exe`, no installation needed.
 ## Contents
 
 - [Features](#features)
+- [The hardware](#the-hardware)
 - [Quick start](#quick-start)
 - [Using the app](#using-the-app)
 - [Teams status](#teams-status)
@@ -53,6 +50,15 @@ a single `PixelPanel.exe`, no installation needed.
   <img src="docs/images/effect-fire.gif" alt="Fire effect" width="32%">
   <img src="docs/images/effect-snow.gif" alt="Snow effect" width="32%">
 </p>
+
+---
+
+## The hardware
+
+Built and tested with the **"LED flexible fun screen"** (64×16 RGB LEDs, USB powered) from
+Action: [Briloner LED-Zeichentablet, article 3226274](https://www.action.com/de-de/p/3226274/briloner-led-zeichentablet/).
+It is an iPixel Color panel: Bluetooth name `LED_BLE_…`, vendor app *iPixels*. Other iPixel Color
+panels (32×16 … 448×32, e.g. BGLight) speak the same protocol; the size is read from the panel.
 
 > **USB is power only.** The panel does not show up as a USB device on the PC – it is controlled
 > exclusively over **Bluetooth Low Energy**. The PC needs Bluetooth (built in or a dongle).
