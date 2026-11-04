@@ -77,7 +77,7 @@ der Verbindungsstatus. Oben steht immer die **Live-Vorschau** – sie sieht aus 
 
 ### Anzeigen
 
-![Sofort anzeigen](docs/images/app-sofort.png)
+![Sofort anzeigen](docs/images/app-1.1-anzeigen.png)
 
 - **Text** eintippen, **Icon / Emoji** wählen (Liste aufklappen oder Emoji direkt einfügen),
   Farbe und Effekt wählen, **Anzeigen** (oder Enter).
@@ -90,7 +90,7 @@ der Verbindungsstatus. Oben steht immer die **Live-Vorschau** – sie sieht aus 
 
 ### Seiten (Rotation)
 
-![Seiten](docs/images/app-seiten.png)
+![Seiten](docs/images/app-1.1-seiten.png)
 
 Links die Liste der Seiten: **Haken** = läuft in der Rotation mit, Reihenfolge per **▲ / ▼**,
 neue Seite über **+ Seite**. Rechts die Einstellungen der gewählten Seite:
@@ -132,14 +132,14 @@ Seite zählt erst, wenn sie vollständig da ist.
 
 ### Verbindungen
 
-![Verbindungen](docs/images/app-verbindungen.png)
+![Verbindungen](docs/images/app-1.1-verbindungen.png)
 
 Alles, was Daten von außen holt: **Microsoft Teams**, **Claude-Nutzung** und **Kalender** – weitere
 Dienste kommen hier dazu.
 
 ### Einstellungen
 
-![Einstellungen](docs/images/app-einstellungen.png)
+![Einstellungen](docs/images/app-1.1-einstellungen.png)
 
 Panel (Gerät suchen/verbinden, Ausrichtung), Nachtmodus (Zeitraum + Helligkeit), Wetter-Ort,
 **Mit Windows starten**, **Minimiert starten**.
