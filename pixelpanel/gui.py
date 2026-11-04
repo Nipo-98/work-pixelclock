@@ -16,7 +16,9 @@ from PySide6.QtWidgets import (
     QSlider, QSpinBox, QStackedWidget, QSystemTrayIcon, QTimeEdit, QToolButton, QVBoxLayout, QWidget,
 )
 
-from . import autostart, calendars, config, pages, sources, theme, transitions
+from concurrent.futures import ThreadPoolExecutor
+
+from . import __version__, autostart, calendars, config, pages, sources, theme, transitions, updater
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -280,6 +282,14 @@ class MainWindow(QMainWindow):
         self._movie_buf: QBuffer | None = None
         self._quitting = False
         self._save_timer = QTimer(self, singleShot=True, interval=400, timeout=self._save_now)
+        self._pool = ThreadPoolExecutor(max_workers=2, thread_name_prefix="gui")
+        self._updating = False
+        self.restart_exe = None  # set after an update: start this exe once the app has quit
+        self.restart_args: list[str] = []
+        self._update_timer = QTimer(self, interval=updater.CHECK_EVERY_H * 3600 * 1000,
+                                    timeout=lambda: self._check_updates())
+        self._update_timer.start()
+        QTimer.singleShot(15_000, lambda: self._check_updates())  # first check shortly after start
 
         central = QWidget(objectName="root")
         outer = QHBoxLayout(central)
@@ -822,6 +832,20 @@ class MainWindow(QMainWindow):
         mini.setChecked(self.cfg.get("start_minimized", False))
         mini.toggled.connect(lambda v: self._set_cfg("start_minimized", v))
         form.addRow("", mini)
+        auto_update = QCheckBox("Install updates automatically")
+        auto_update.setToolTip("Checks GitHub for a new release at start and every few hours, "
+                               "downloads it, verifies it and restarts the app.")
+        auto_update.setChecked(self.cfg.get("auto_update", True))
+        auto_update.toggled.connect(lambda v: self._set_cfg("auto_update", v))
+        form.addRow("", auto_update)
+        row = QHBoxLayout()
+        check = QPushButton("Check for New Version")
+        check.clicked.connect(lambda: self._check_updates(manual=True))
+        self.update_status = QLabel(f"Version {__version__}", objectName="muted")
+        self.update_status.setWordWrap(True)
+        row.addWidget(check)
+        row.addWidget(self.update_status, 1)
+        form.addRow("Version", row)
         path = QLabel(f"Settings file: {config.CONFIG_FILE}")
         path.setObjectName("hint")
         path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -1024,6 +1048,94 @@ class MainWindow(QMainWindow):
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
             self._tray_hint_shown = True
 
+    # --- updates --------------------------------------------------------------------------------
+
+    def _run_in_background(self, fn, on_done, *args) -> None:
+        """Run fn(*args) in a worker thread and call on_done(result, error) in the GUI thread."""
+        fut = self._pool.submit(fn, *args)
+
+        def poll() -> None:
+            if not fut.done():
+                QTimer.singleShot(200, poll)
+                return
+            err = fut.exception()
+            on_done(None if err else fut.result(), err)
+
+        QTimer.singleShot(200, poll)
+
+    def _check_updates(self, manual: bool = False) -> None:
+        if self._updating:
+            return
+        if manual:
+            self.update_status.setText("Checking GitHub …")
+
+        def done(release, err) -> None:
+            if err is not None:
+                log.info("update check failed: %s", err)
+                if manual:
+                    self.update_status.setText(f"Could not check for updates: {err}")
+                return
+            if release is None:
+                if manual:
+                    self.update_status.setText(f"Version {__version__} – this is the latest version.")
+                return
+            self._offer_update(release, manual)
+
+        self._run_in_background(updater.check, done)
+
+    def _offer_update(self, release, manual: bool) -> None:
+        new = release.tag.lstrip("v")
+        self.update_status.setText(f"Version {new} is available (you have {__version__}).")
+        if updater.running_exe() is None:
+            self.update_status.setText(self.update_status.text() + " Updates install only in the exe – "
+                                       "this copy runs from the source code.")
+            return
+        if manual:
+            answer = QMessageBox.question(self, "Update available",
+                                          f"Pixel Panel {new} is available (you have {__version__}).\n\n"
+                                          "Download and install it now? The app restarts afterwards.")
+            if answer == QMessageBox.StandardButton.Yes:
+                self._install_update(release)
+        elif self.cfg.get("auto_update", True):
+            self._install_update(release)
+        else:
+            self.tray.showMessage("Pixel Panel update", f"Version {new} is available – "
+                                  "Settings › Check for New Version.", QSystemTrayIcon.MessageIcon.Information, 6000)
+
+    def _install_update(self, release) -> None:
+        exe = updater.running_exe()
+        if exe is None or self._updating:
+            return
+        self._updating = True
+        new = release.tag.lstrip("v")
+        progress = {"done": 0, "total": release.size}
+
+        def show_progress() -> None:
+            if self._updating and progress["total"]:
+                pct = 100 * progress["done"] // progress["total"]
+                self.update_status.setText(f"Downloading version {new} … {pct} %")
+                QTimer.singleShot(300, show_progress)
+
+        def work() -> None:
+            path = updater.download(release, exe.parent, lambda d, t: progress.update(done=d))
+            updater.swap(path, exe)
+
+        def done(_result, err) -> None:
+            self._updating = False
+            if err is not None:
+                log.warning("update failed: %s", err)
+                self.update_status.setText(f"Update failed: {err}")
+                return
+            log.info("updated to %s, restarting", release.tag)
+            self.tray.showMessage("Pixel Panel updated", f"Restarting with version {new} …",
+                                  QSystemTrayIcon.MessageIcon.Information, 3000)
+            self.restart_args = [] if self.isVisible() else ["--minimized"]
+            self.restart_exe = exe
+            QTimer.singleShot(800, self.quit)
+
+        show_progress()
+        self._run_in_background(work, done)
+
     def quit(self) -> None:
         self._quitting = True
         self._save_now()
@@ -1047,6 +1159,7 @@ def run(start_hidden: bool = False) -> int:
         QMessageBox.information(None, "Pixel Panel", "Pixel Panel is already running (tray icon).")
         return 0
 
+    updater.cleanup()  # remove the previous version (PixelPanel.exe.old) after an update
     cfg = config.load()
     bridge = Bridge()
     engine = Engine(copy.deepcopy(cfg), on_status=bridge.status.emit, on_preview=bridge.preview.emit)
@@ -1058,5 +1171,7 @@ def run(start_hidden: bool = False) -> int:
         window.show()
         QTimer.singleShot(300, window._scan)  # first start: find the panel
     code = app.exec()
-    lock.unlock()
+    lock.unlock()  # before the restart, or the new version would find the app "already running"
+    if window.restart_exe is not None:
+        updater.restart(window.restart_exe, window.restart_args)
     return code

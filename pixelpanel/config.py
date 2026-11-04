@@ -73,6 +73,7 @@ def default_config() -> dict:
         "weather": {"city": "", "lat": None, "lon": None},
         "night": {"enabled": False, "start": "22:00", "end": "07:00", "brightness": 5},
         "autostart": False,
+        "auto_update": True,
         "start_minimized": False,
     }
 

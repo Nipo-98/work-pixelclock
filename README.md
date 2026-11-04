@@ -22,6 +22,7 @@ a single `PixelPanel.exe`, no installation needed.
 - [Claude usage](#claude-usage)
 - [Calendar (next meeting)](#calendar-next-meeting)
 - [Weather](#weather)
+- [Updates](#updates)
 - [Settings and files](#settings-and-files)
 - [Troubleshooting](#troubleshooting)
 - [Development](#development)
@@ -152,10 +153,11 @@ more services will be added here.
 
 ### Settings
 
-![Settings](docs/images/app-settings.png)
+![Settings](docs/images/app-settings-1.3.png)
 
 Panel (search/connect device, orientation), night mode (time range + brightness), weather location,
-**Start with Windows**, **Start minimised**.
+**Start with Windows**, **Start minimised**, **Install updates automatically** and **Check for New
+Version** (see [Updates](#updates)).
 
 ### Tray icon
 
@@ -261,6 +263,29 @@ shows an icon, the current temperature and today's low/high.
 
 ---
 
+## Updates
+
+Pixel Panel (from 1.3.0) keeps itself up to date from the
+[GitHub releases](https://github.com/Nipo-98/work-pixelclock/releases):
+
+1. Shortly after start and then every 6 hours it asks GitHub for the latest release (public API,
+   no sign-in). **Settings › Check for New Version** checks right away.
+2. If there is a newer version, it downloads `PixelPanel.exe` next to the running one and checks
+   its **SHA-256 checksum** against the one GitHub publishes – a damaged or altered download is
+   never installed.
+3. Windows does not let a running program be overwritten, but it can be renamed: the running exe
+   becomes `PixelPanel.exe.old`, the new one takes its place, starts, and the old app quits. The new
+   version deletes the `.old` file. Path, settings and autostart stay the same.
+
+With **Install updates automatically** (default) this happens on its own, with a tray notice. Switched
+off, you get a notice instead and install via **Check for New Version**. Running from the source
+code, the app only reports new versions.
+
+> Anyone who can publish releases in this repository can deliver code to every installed copy –
+> keep write access to the repository tight.
+
+---
+
 ## Settings and files
 
 | What | Where |
@@ -331,6 +356,7 @@ pixelpanel/
   m365.py         Microsoft 365 calendar (MSAL sign-in, Graph calendarView)
   config.py       settings (JSON in %APPDATA%\PixelPanel)
   autostart.py    start with Windows (registry, no admin)
+  updater.py      self-update from GitHub releases (check, download + SHA-256, swap, restart)
   core/           protocol, pixel font, icons, effects, drawing – from ha-pixelclock
 tests/            pytest
 build.ps1         builds dist\PixelPanel.exe
