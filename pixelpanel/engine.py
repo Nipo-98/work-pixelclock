@@ -1,6 +1,6 @@
 """Runs in a background thread: keeps the panel connected and decides what it shows.
 
-Priority: a message sent from "Sofort anzeigen" > Teams status light > page rotation.
+Priority: a message sent from "Show now" > Teams status light > page rotation.
 """
 
 from __future__ import annotations
@@ -42,7 +42,7 @@ FALLBACK_PAGE = {"id": "_fallback_clock", "type": "clock", "color": "#ffffff", "
 
 @dataclass
 class Status:
-    connection: str = "Nicht verbunden"  # human readable
+    connection: str = "Not connected"  # human readable
     connected: bool = False
     showing: str = ""
     teams: str | None = None
@@ -166,7 +166,7 @@ class Engine:
         async def _sign_in():
             cal = self._get_calendar()
             if cal is None:
-                raise ValueError("Erst Client-ID eintragen")
+                raise ValueError("Enter the application (client) ID first")
             account = await asyncio.to_thread(cal.sign_in)
             self._next_calendar = 0
             self._wake()
@@ -178,7 +178,7 @@ class Engine:
             if (cal := self._get_calendar()) is not None:
                 await asyncio.to_thread(cal.sign_out)
             self.ctx.meeting = None
-            self.status.calendar = "Abgemeldet"
+            self.status.calendar = "Signed out"
             self._publish()
         self.submit(_out())
 
@@ -268,22 +268,22 @@ class Engine:
             try:
                 if provider == "outlook":
                     self.ctx.meeting = await asyncio.to_thread(calendars.fetch_outlook)
-                    self.status.calendar = "Liest den Kalender aus Outlook auf diesem PC"
+                    self.status.calendar = "Reading the calendar from Outlook on this PC"
                 elif provider == "ics":
                     self.ctx.meeting = await asyncio.to_thread(calendars.fetch_ics, cal_cfg["ics_url"])
-                    self.status.calendar = "Kalender-Link wird gelesen"
+                    self.status.calendar = "Reading the calendar link"
                 else:
                     cal = self._get_calendar()
                     self.ctx.meeting = await asyncio.to_thread(cal.fetch)
                     self.status.calendar = f"Angemeldet als {await asyncio.to_thread(cal.account)}"
             except PermissionError:
-                self.ctx.meeting, self.status.calendar = None, "Nicht angemeldet – „Anmelden“ klicken"
+                self.ctx.meeting, self.status.calendar = None, "Not signed in – click Sign in"
             except urllib.error.HTTPError as err:
-                self.status.calendar = f"Kalender: HTTP {err.code}" + (" – Berechtigung fehlt?" if err.code == 403 else "")
+                self.status.calendar = f"Calendar: HTTP {err.code}" + (" – permission missing?" if err.code == 403 else "")
                 self._next_calendar = now_m + 120
             except Exception as err:  # noqa: BLE001 - network, MSAL configuration
                 log.warning("calendar: %s", err)
-                self.status.calendar = f"Kalender: {err}"
+                self.status.calendar = f"Calendar: {err}"
                 self._next_calendar = now_m + 120
         wx = cfg.get("weather", {})
         if wx.get("lat") is not None and now_m >= self._next_weather:
@@ -304,7 +304,7 @@ class Engine:
         if self.client.connected or not address or now_m < self._next_connect:
             return
         self._next_connect = now_m + RECONNECT_EVERY
-        self.status.connection = f"Verbinde mit {cfg.get('name') or address} ..."
+        self.status.connection = f"Connecting to {cfg.get('name') or address} ..."
         self._publish()
         try:
             await self.client.connect(address)
@@ -312,7 +312,7 @@ class Engine:
             self._connection_changed(cfg)  # now, not a tick later (that would forget the first picture)
         except Exception as err:  # noqa: BLE001 - bleak raises many kinds
             log.warning("connect failed: %s", err)
-            self.status.connection = "Panel nicht erreichbar – neuer Versuch läuft"
+            self.status.connection = "Panel not reachable – retrying"
             self.status.error = str(err) or err.__class__.__name__
             self._publish()
 
@@ -320,7 +320,7 @@ class Engine:
         connected = self.client.connected
         self.status.connected = connected
         name = cfg.get("name") or cfg.get("address")
-        self.status.connection = f"Verbunden mit {name}" if connected else "Getrennt"
+        self.status.connection = f"Connected to {name}" if connected else "Disconnected"
         self._applied = {"lat": self._applied.get("lat"), "calendar": self._applied.get("calendar")}
         if connected:  # connect() set the clock already
             self._applied["time_synced"] = datetime.now().date()
@@ -362,19 +362,19 @@ class Engine:
                 self._message = None
                 self._shown = _Shown()
             else:
-                return msg.page, "Sofort-Anzeige", False
+                return msg.page, "Message", False
         cal = cfg.get("calendar", {})
         meeting = self.ctx.meeting
         if cal.get("enabled") and meeting and int(cal.get("remind_minutes", 0)) > 0:
             left = (meeting.start - datetime.now(timezone.utc)).total_seconds()
             if 0 <= left <= int(cal["remind_minutes"]) * 60:
-                return REMINDER_PAGE, "Termin-Erinnerung", False
+                return REMINDER_PAGE, "Meeting reminder", False
         teams = cfg["teams"]
         if teams.get("enabled", True) and teams.get("status_light") and self.ctx.teams in teams.get("light_states", []):
-            return {"id": "_teams_light", "type": "teams"}, "Teams-Statuslicht", True
+            return {"id": "_teams_light", "type": "teams"}, "Teams status light", True
         rotation = self._rotation(cfg)
         if not rotation:  # never leave the last picture (e.g. an old status light) standing
-            return FALLBACK_PAGE, "Uhr (keine Seite aktiv)", False
+            return FALLBACK_PAGE, "Clock (no page enabled)", False
         if self._rot_started == 0:
             self._rot_started = now_m
         elif self._advance or (len(rotation) > 1 and now_m - self._rot_started >= max(self._rot_min, 1)):
@@ -396,7 +396,7 @@ class Engine:
         data, is_gif = await asyncio.to_thread(render.encode, render.to_panel(anim, orientation))
         t0 = time.monotonic()
         await self.client.send_image(data, is_gif)
-        log.info("Übergang %s: %s Bytes in %.1f s", kind, len(data), time.monotonic() - t0)
+        log.info("transition %s: %s bytes in %.1f s", kind, len(data), time.monotonic() - t0)
         await asyncio.sleep(transitions.play_ms(anim) / 1000)
 
     async def _show(self, page: dict | None, label: str, light: bool) -> None:
@@ -456,8 +456,8 @@ class Engine:
                     self._publish()
             except Exception as err:  # noqa: BLE001
                 log.warning("send failed: %s", err)
-                self.status.error = f"Senden fehlgeschlagen: {err}"
+                self.status.error = f"Sending failed: {err}"
         if self.status.showing != label:
-            log.info("zeige: %s", label)
+            log.info("showing: %s", label)
             self.status.showing = label
             self._publish()

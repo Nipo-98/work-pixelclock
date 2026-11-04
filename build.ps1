@@ -22,4 +22,4 @@ if (Get-Process PixelPanel -ErrorAction SilentlyContinue) {
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit code $LASTEXITCODE)." }
 $exe = Get-Item dist\PixelPanel.exe
 if ($exe.LastWriteTime -lt (Get-Date).AddMinutes(-5)) { throw "dist\PixelPanel.exe was not rewritten." }
-Write-Host "Fertig: $($exe.FullName) ($($exe.LastWriteTime))"
+Write-Host "Done: $($exe.FullName) ($($exe.LastWriteTime))"

@@ -97,7 +97,7 @@ class PanelClient:
 
     def _require(self) -> BleakClient:
         if not self.connected:
-            raise ConnectionError("Panel nicht verbunden")
+            raise ConnectionError("Panel not connected")
         return self._client  # type: ignore[return-value]
 
     def _drain(self) -> None:
@@ -157,7 +157,7 @@ class PanelClient:
                 log.info("fast upload not acknowledged, retrying with acknowledged writes")
                 self.fast_writes = False
             if not await self._upload(windows, fast=False):
-                raise TimeoutError("Panel hat das Bild nicht bestätigt")
+                raise TimeoutError("Panel did not confirm the picture")
 
     async def _upload(self, windows: list[bytes], fast: bool) -> bool:
         self._drain()

@@ -17,9 +17,9 @@ from .m365 import LOOKAHEAD, Meeting
 log = logging.getLogger(__name__)
 
 PROVIDERS: dict[str, str] = {
-    "outlook": "Outlook auf diesem PC (ohne Anmeldung)",
-    "ics": "Kalender-Link (ICS)",
-    "graph": "Microsoft 365 (Anmeldung, App-Registrierung nötig)",
+    "outlook": "Outlook on this PC (no sign-in)",
+    "ics": "Calendar link (ICS)",
+    "graph": "Microsoft 365 (sign-in, needs an app registration)",
 }
 
 # Outlook enums
@@ -63,7 +63,7 @@ def next_from_ics(text: str, now: datetime) -> Meeting | None:
             continue
         start = _aware(start)
         end = _aware(end) if isinstance(end, datetime) else start + timedelta(minutes=30)
-        found.append(Meeting(str(ev.get("SUMMARY", "Termin")).strip(), start, end, str(ev.get("LOCATION", "")).strip()))
+        found.append(Meeting(str(ev.get("SUMMARY", "Meeting")).strip(), start, end, str(ev.get("LOCATION", "")).strip()))
     return _pick(found, now)
 
 
@@ -119,7 +119,7 @@ def next_from_outlook_items(items, now: datetime) -> Meeting | None:
             start, end = com_time(it.Start), com_time(it.End)
         except AttributeError:
             continue
-        found.append(Meeting(str(it.Subject or "Termin").strip(), start, end, str(it.Location or "").strip()))
+        found.append(Meeting(str(it.Subject or "Meeting").strip(), start, end, str(it.Location or "").strip()))
     return _pick(found, now)
 
 
@@ -140,7 +140,7 @@ def fetch_outlook(now: datetime | None = None) -> Meeting | None:
             except (AttributeError, pythoncom.com_error):
                 time.sleep(1)
         if items is None:
-            raise RuntimeError("Outlook antwortet nicht")
+            raise RuntimeError("Outlook is not responding")
         items.IncludeRecurrences = True
         items.Sort("[Start]")
         local_now = now.astimezone().replace(tzinfo=None)

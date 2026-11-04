@@ -1,286 +1,291 @@
-# work-pixelclock – Pixel Panel für Windows
+# work-pixelclock – Pixel Panel for Windows
 
-Ein Windows-Programm (`PixelPanel.exe`), das ein **iPixel-Color-LED-Panel per Bluetooth** steuert
-und die Handy-App „iPixels“ komplett ersetzt. Neben Text, Emojis, Bildern und Uhren zeigt es
-deinen **Microsoft-Teams-Status als Statuslicht** und deine **Claude-Nutzung** (Sitzung und Woche)
-direkt auf dem Panel an.
+A Windows app (`PixelPanel.exe`) that controls an **iPixel Color LED panel over Bluetooth** and
+replaces the "iPixels" phone app entirely. Besides text, emojis, images and clocks it shows your
+**Microsoft Teams status as a status light**, your **Claude usage** (session and week) and your
+**next meeting** right on the panel.
 
-![Panel-Seiten](docs/images/seiten.png)
+![Panel pages](docs/images/pages.png)
 
-Getestet mit dem „LED flexible fun screen“ von Action (Briloner LED-Zeichentafel, Artikel 3226274):
-64 × 16 RGB-LEDs, Strom über USB, Bluetooth-Name `LED_BLE_…`. Andere iPixel-Color-Panels
-(32 × 16 bis 448 × 32) sprechen dasselbe Protokoll; die Größe liest das Programm aus dem Panel.
+Built and tested with the "LED flexible fun screen" from Action (Briloner LED drawing board,
+article 3226274): 64 × 16 RGB LEDs, USB powered, Bluetooth name `LED_BLE_…`. Other iPixel Color
+panels (32 × 16 up to 448 × 32) speak the same protocol; the app reads the size from the panel.
 
----
-
-## Inhalt
-
-- [Funktionen](#funktionen)
-- [Schnellstart](#schnellstart)
-- [Bedienung](#bedienung)
-- [Teams-Statuslicht](#teams-statuslicht)
-- [Claude-Nutzung](#claude-nutzung)
-- [Kalender (nächstes Meeting)](#kalender-nächstes-meeting)
-- [Wetter](#wetter)
-- [Einstellungen und Dateien](#einstellungen-und-dateien)
-- [Fehlerbehebung](#fehlerbehebung)
-- [Entwicklung](#entwicklung)
-- [Wie es funktioniert](#wie-es-funktioniert)
-- [Herkunft und Danksagung](#herkunft-und-danksagung)
+**Download:** [latest release](https://github.com/Nipo-98/work-pixelclock/releases/latest) –
+a single `PixelPanel.exe`, no installation needed.
 
 ---
 
-## Funktionen
+## Contents
 
-| Bereich | Was geht |
+- [Features](#features)
+- [Quick start](#quick-start)
+- [Using the app](#using-the-app)
+- [Teams status](#teams-status)
+- [Claude usage](#claude-usage)
+- [Calendar (next meeting)](#calendar-next-meeting)
+- [Weather](#weather)
+- [Settings and files](#settings-and-files)
+- [Troubleshooting](#troubleshooting)
+- [Development](#development)
+- [How it works](#how-it-works)
+- [Credits](#credits)
+
+---
+
+## Features
+
+| Area | What it does |
 |---|---|
-| **Sofort anzeigen** | Text mit Emoji oder Icon, eigene Farbe, Hintergrund-Effekt, für X Sekunden oder dauerhaft; Bild oder animiertes GIF; die 9 eingebauten Uhr-Designs des Panels |
-| **Seiten-Rotation** | Beliebig viele Seiten, die nacheinander durchlaufen: Uhr, Datum, Text/Emoji, Bild/GIF, Wetter, Teams-Status, Claude-Nutzung – jede mit eigener Anzeigedauer, per Haken an/aus, sortierbar |
-| **Teams-Status** | Farbige Statusleiste am Rand jeder Seite; bei „Beschäftigt“, „Im Call“, „Nicht stören“ … leuchtet das ganze Panel in der Statusfarbe – automatisch, ohne Anmeldung |
-| **Claude-Nutzung** | Prozent der 5-Stunden-Sitzung und des Wochenlimits deines Claude-Abos, farbig (grün/gelb/rot) |
-| **Kalender** | Nächstes Meeting aus Outlook (ohne Anmeldung), einem Kalender-Link oder Microsoft 365, Countdown-Erinnerung kurz vor Beginn |
-| **Emojis** | Echte Farb-Emojis (Windows-Emoji-Schrift) in 16 × 16 Pixel, ~50 eingebaute Pixel-Icons, tausende LaMetric-Icons (`lm:<id>`) oder eigene Bilddateien |
-| **Effekte** | Regenbogen-Text, Matrix, Funkeln, Feuer, Plasma, Schnee, Regen, Pulsieren |
-| **Übergänge** | Seitenwechsel springen, schieben, einschießen, überblenden, wischen, auflösen – oder mit **Nyan Cat** |
-| **Panel** | An/aus, Helligkeit, Nachtmodus (zeitgesteuert dunkler), Ausrichtung inkl. hochkant |
-| **Programm** | Läuft im Hintergrund (Symbol in der Taskleiste), Start mit Windows, verbindet sich automatisch neu |
+| **Show now** | Text with emoji or icon, your own colour, background effect, for X seconds or until you go back; an image or animated GIF; the panel's 9 built-in clock designs |
+| **Page rotation** | Any number of pages shown one after another: clock, date, text/emoji, image/GIF, weather, Teams status, Claude usage, next meeting – each with its own duration, tick to enable, sortable |
+| **Transitions** | Page changes jump, push, shoot in, fade, wipe, dissolve – or arrive with **Nyan Cat** |
+| **Teams status** | A stripe in the Teams colour on both sides of every page; for "Busy", "In a call", "Don't disturb" … the whole panel lights up in the status colour – automatically, no sign-in |
+| **Claude usage** | Percent of the 5-hour session and of the weekly limit of your Claude plan, coloured green/yellow/red, with the Claude logo or **Clawd** |
+| **Calendar** | Next meeting from Outlook (no sign-in), a calendar link or Microsoft 365, with a countdown reminder shortly before it starts |
+| **Emojis** | Real colour emojis (Windows emoji font) at 16 × 16 pixels, ~50 built-in pixel icons, thousands of LaMetric icons (`lm:<id>`) or your own image files |
+| **Effects** | Rainbow text, matrix, twinkle, fire, plasma, snow, rain, pulse |
+| **Panel** | On/off, brightness, night mode (dimmer at set times), orientation incl. portrait |
+| **App** | Runs in the background (tray icon), starts with Windows, reconnects on its own |
 
 <p>
-  <img src="docs/images/effekt-matrix.gif" alt="Matrix-Effekt" width="32%">
-  <img src="docs/images/effekt-fire.gif" alt="Feuer-Effekt" width="32%">
-  <img src="docs/images/effekt-snow.gif" alt="Schnee-Effekt" width="32%">
+  <img src="docs/images/effect-matrix.gif" alt="Matrix effect" width="32%">
+  <img src="docs/images/effect-fire.gif" alt="Fire effect" width="32%">
+  <img src="docs/images/effect-snow.gif" alt="Snow effect" width="32%">
 </p>
 
-> **USB ist nur Strom.** Das Panel meldet sich am PC nicht als USB-Gerät an – gesteuert wird
-> ausschließlich über **Bluetooth Low Energy**. Der PC braucht also Bluetooth (eingebaut oder Stick).
+> **USB is power only.** The panel does not show up as a USB device on the PC – it is controlled
+> exclusively over **Bluetooth Low Energy**. The PC needs Bluetooth (built in or a dongle).
 
 ---
 
-## Schnellstart
+## Quick start
 
-1. **Panel einstecken** (USB-Strom) und einschalten.
-2. **Handy-App schließen** bzw. Bluetooth am Handy aus – das Panel nimmt nur *eine* Verbindung an.
-3. `PixelPanel.exe` starten (siehe [Bauen](#exe-bauen), falls du noch keine hast).
-4. Beim ersten Start sucht das Programm automatisch nach Panels. Wird genau eins gefunden, verbindet
-   es sich sofort; sonst das gewünschte Panel oben auswählen und **Verbinden** klicken.
-5. Fertig – die Rotation startet mit Uhr und Claude-Nutzung; das Teams-Statuslicht ist aktiv.
+1. **Plug in the panel** (USB power) and switch it on.
+2. **Close the phone app** or turn off Bluetooth on the phone – the panel accepts only *one*
+   connection.
+3. Start `PixelPanel.exe` (from the [releases](https://github.com/Nipo-98/work-pixelclock/releases)
+   or [build it](#build-the-exe)).
+4. On first start the app searches for panels. If it finds exactly one, it connects right away;
+   otherwise pick the panel under *Settings › Panel* and click **Connect**.
+5. Done – the rotation starts with clock and Claude usage, and the Teams status light is on.
 
-Das Panel muss **nicht** in den Windows-Bluetooth-Einstellungen gekoppelt werden.
+The panel does **not** need to be paired in the Windows Bluetooth settings.
+
+> Windows SmartScreen may warn on first start because the exe is not signed:
+> *More info › Run anyway*.
 
 ---
 
-## Bedienung
+## Using the app
 
-Links die Navigation (**Anzeigen**, **Seiten**, **Verbindungen**, **Einstellungen**) und darunter
-der Verbindungsstatus. Oben steht immer die **Live-Vorschau** – sie sieht aus wie das Panel selbst
-(runde LEDs, auch Animationen) – mit **Nächste Seite**, **Helligkeit** und **An/Aus**.
+On the left is the navigation (**Show now**, **Pages**, **Connections**, **Settings**) with the
+connection status below it. At the top there is always the **live preview** – it looks like the
+panel itself (round LEDs, animations included) – with **Next page**, **brightness** and **On/Off**.
 
-### Anzeigen
+### Show now
 
-![Sofort anzeigen](docs/images/app-1.1-anzeigen.png)
+![Show now](docs/images/app-show-now.png)
 
-- **Text** eintippen, **Icon / Emoji** wählen (Liste aufklappen oder Emoji direkt einfügen),
-  Farbe und Effekt wählen, **Anzeigen** (oder Enter).
-- Ein Emoji *im Text* wird automatisch als Icon links angezeigt, z. B. `Bin gleich zurück ☕`.
-- Langer Text läuft als Laufschrift.
-- **Dauer** `0` = bleibt stehen, bis du **Zurück zur Rotation** klickst; sonst z. B. `60 s`.
-- **Als Seite in die Rotation** übernimmt den Text dauerhaft.
-- **Bild / GIF anzeigen…** – wird auf die Panelgröße verkleinert, GIFs laufen animiert.
-- **Eingebaute Uhr anzeigen** – eines der 9 Uhr-Designs, die das Panel selbst kann.
+- Type a **text**, pick an **icon / emoji** (open the list or paste an emoji), choose colour and
+  effect, then **Show** (or press Enter).
+- An emoji *in the text* automatically becomes the icon on the left, e.g. `Back in 5 min ☕`.
+- Long text scrolls.
+- **Duration** `0` = stays until you click **Back to rotation**; otherwise e.g. `60 s`.
+- **Add to rotation** keeps the text as a page.
+- **Show image / GIF…** – scaled down to the panel size, GIFs play animated.
+- **Show built-in clock** – one of the 9 clock designs the panel has built in.
 
-### Seiten (Rotation)
+### Pages (rotation)
 
-![Seiten](docs/images/app-1.1-seiten.png)
+![Pages](docs/images/app-pages.png)
 
-Links die Liste der Seiten: **Haken** = läuft in der Rotation mit, Reihenfolge per **▲ / ▼**,
-neue Seite über **+ Seite**. Rechts die Einstellungen der gewählten Seite:
+On the left the list of pages: **ticked** pages are in the rotation, order with **▲ / ▼**, new
+pages with **+ Page**. On the right the settings of the selected page:
 
-| Seite | Einstellungen |
+| Page | Settings |
 |---|---|
-| **Uhr** | Farbe, Effekt, Sekunden, Wochentag-Leiste |
-| **Uhr (eingebaut im Panel)** | Design 0–8, Datum an/aus – läuft im Panel selbst |
-| **Datum** | Farbe, Icon, Effekt |
-| **Text / Emoji** | Text, Icon/Emoji, Farbe, Effekt |
-| **Bild / GIF** | Datei |
-| **Wetter** | Farbe, Effekt (Ort unter *Einstellungen*) |
-| **Teams-Status** | farbiger Punkt + Status |
-| **Claude-Nutzung** | Sitzung + Woche, nur Sitzung oder nur Woche (mit Balken); Symbol: Claude-Logo oder **Clawd** |
-| **Nächstes Meeting** | Uhrzeit und Titel des nächsten Termins (Quelle unter *Verbindungen*) |
+| **Clock** | Colour, effect, seconds, weekday bar |
+| **Clock (built into the panel)** | Design 0–8, date on/off – runs on the panel itself |
+| **Date** | Colour, icon, effect |
+| **Text / Emoji** | Text, icon/emoji, colour, effect |
+| **Image / GIF** | File |
+| **Weather** | Colour, effect (location under *Settings*) |
+| **Teams status** | Coloured dot + status |
+| **Claude usage** | Session + week, session only or week only (with bar); icon: Claude logo or **Clawd** |
+| **Next meeting** | Time and title of your next meeting (source under *Connections*) |
 
-Laufschrift wird immer mindestens einmal komplett gezeigt, auch wenn die Anzeigedauer kürzer ist.
+Scrolling text is always shown at least once completely, even if the duration is shorter.
 
-**Übergänge:** Oben im Tab wählst du, wie die nächste Seite aufs Panel kommt – *Sofort
-(springen)*, *Schieben nach links / oben*, *Einschießen*, *Überblenden*, *Wischen*, *Auflösen*,
-**Nyan Cat** oder *Zufällig*. Bei Nyan Cat fliegt die Katze über das Panel, zieht den Regenbogen
-über die alte Seite, der Regenbogen blendet aus und darunter liegt die neue Seite. Übergänge
-gelten für jeden Seitenwechsel (auch Statuslicht und Termin-Erinnerung); die Anzeigedauer einer
-Seite zählt erst, wenn sie vollständig da ist.
+**Transitions:** At the top of the page list you choose how the next page comes onto the panel –
+*Instant (jump)*, *Push left / up*, *Shoot in*, *Fade*, *Wipe*, *Dissolve*, **Nyan Cat** or
+*Random*. With Nyan Cat the cat flies across the panel, pulls its rainbow over the old page, the
+rainbow fades out and the new page is underneath. Transitions apply to every page change (also
+status light and meeting reminder); a page's duration only starts once it is fully on the panel.
 
 <p>
-  <img src="docs/images/uebergang-nyan.gif" alt="Nyan-Cat-Übergang" width="32%">
-  <img src="docs/images/uebergang-shoot.gif" alt="Einschießen" width="32%">
-  <img src="docs/images/uebergang-push_left.gif" alt="Schieben" width="32%">
+  <img src="docs/images/transition-nyan.gif" alt="Nyan Cat transition" width="32%">
+  <img src="docs/images/transition-shoot.gif" alt="Shoot in" width="32%">
+  <img src="docs/images/transition-push.gif" alt="Push" width="32%">
 </p>
 
-**Icons:** Feld *Icon / Emoji* akzeptiert
+**Icons:** the *Icon / Emoji* field accepts
 
-- ein Emoji, z. B. `🚀`
-- einen eingebauten Namen, z. B. `heart`, `house`, `coffee`, `bell`, `car`, `music`, `star` …
-- ein LaMetric-Icon: `lm:2867` (Nummer von [developer.lametric.com/icons](https://developer.lametric.com/icons))
-- `claude` (Claude-Logo) oder `clawd` (Clawd, das Maskottchen von Claude Code)
-- eine Bilddatei (Knopf **…**)
+- an emoji, e.g. `🚀`
+- a built-in name, e.g. `heart`, `house`, `coffee`, `bell`, `car`, `music`, `star` …
+- a LaMetric icon: `lm:2867` (number from [developer.lametric.com/icons](https://developer.lametric.com/icons))
+- `claude` (Claude logo) or `clawd` (Clawd, the Claude Code mascot)
+- an image file (button **…**)
 
-### Verbindungen
+### Connections
 
-![Verbindungen](docs/images/app-1.1-verbindungen.png)
+![Connections](docs/images/app-connections.png)
 
-Alles, was Daten von außen holt: **Microsoft Teams**, **Claude-Nutzung** und **Kalender** – weitere
-Dienste kommen hier dazu.
+Everything that fetches data from outside: **Microsoft Teams**, **Claude usage** and **Calendar** –
+more services will be added here.
 
-### Einstellungen
+### Settings
 
-![Einstellungen](docs/images/app-1.1-einstellungen.png)
+![Settings](docs/images/app-settings.png)
 
-Panel (Gerät suchen/verbinden, Ausrichtung), Nachtmodus (Zeitraum + Helligkeit), Wetter-Ort,
-**Mit Windows starten**, **Minimiert starten**.
+Panel (search/connect device, orientation), night mode (time range + brightness), weather location,
+**Start with Windows**, **Start minimised**.
 
-### Taskleisten-Symbol
+### Tray icon
 
-Das **X** am Fenster schließt nur das Fenster – das Panel wird weiter gesteuert. Über das Symbol
-in der Taskleiste (Rechtsklick): Öffnen, Nächste Seite, Zurück zur Rotation, Panel an/aus,
-Teams-Statuslicht an/aus, **Beenden**.
+The window's **X** only closes the window – the panel keeps being controlled. From the tray icon
+(right-click): Open, Next page, Back to rotation, Panel on/off, Teams status light on/off, **Quit**.
 
 ---
 
-## Teams-Statuslicht
+## Teams status
 
-![Teams-Status](docs/images/teams-status.png)
+![Teams states](docs/images/teams-states.png)
 
-*Links: Teams-Seite in der Rotation. Rechts: Statuslicht (ganzes Panel leuchtet).*
+*Left: Teams page in the rotation. Right: status light (the whole panel lights up).*
 
-- Der Status wird aus der **Logdatei des neuen Teams-Clients** gelesen
+- The status is read from the **log file of the new Teams client**
   (`%LOCALAPPDATA%\Packages\MSTeams_8wekyb3d8bbwe\LocalCache\Microsoft\MSTeams\Logs\MSTeams_*.log`,
-  Zeilen `UserPresenceAction … availability: Busy`). Keine Anmeldung, keine Azure-App, keine
-  Admin-Rechte; geprüft wird alle 2 Sekunden.
-- **Statusleiste:** Solange die Rotation läuft, hat jede Seite links und rechts einen Streifen
-  in der Teams-Farbe – der Status ist also immer sichtbar, ohne die Rotation anzuhalten. Breite
-  **1, 2 oder 3 Pixel** einstellbar (Standard 2), abschaltbar unter *Verbindungen*. Die Seite
-  wird dafür schmaler gezeichnet und hält 1 Pixel Abstand – die Streifen überdecken nichts und
-  Icons stoßen nicht an.
+  lines `UserPresenceAction … availability: Busy`). No sign-in, no Azure app, no admin rights;
+  checked every 2 seconds.
+- **Status bar:** while the rotation runs, every page has a stripe in the Teams colour on the left
+  and right – the status is always visible without stopping the rotation. Width **1, 2 or 3
+  pixels** (default 2), can be switched off under *Connections*. The page is drawn narrower with a
+  1-pixel gap, so the stripes never cover anything and icons don't touch them.
 
-  ![Statusleiste](docs/images/teams-rahmen.png)
+  ![Status bar](docs/images/status-bar.png)
 
-- **Statuslicht:** Unter *Verbindungen* legst du fest, **bei welchen Status** das ganze Panel
-  leuchtet und die Rotation pausiert (Standard: Beschäftigt, Im Anruf, Im Meeting, Am Telefon,
-  Präsentiert, Nicht stören). **Nur Status anhaken, bei denen die Rotation wirklich anhalten
-  soll** – wer „Verfügbar“ anhakt, hat dauerhaft Statuslicht und keine Rotation mehr.
-- Priorität: **Sofort anzeigen** > **Statuslicht** > **Rotation**. Ist keine Seite angehakt,
-  zeigt das Panel die Uhr.
-- Grenzen: Funktioniert nur mit dem neuen Teams („Teams 2.0“) auf demselben PC. Während eines Anrufs
-  schreibt Teams meist nur „Beschäftigt“ ins Log. Da es keine offizielle Schnittstelle ist, kann ein
-  Teams-Update das Format ändern.
+- **Status light:** under *Connections* you choose **for which states** the whole panel lights up
+  and the rotation pauses (default: Busy, In a call, In a meeting, On the phone, Presenting, Don't
+  disturb). **Only tick states that should really stop the rotation** – ticking "Available" means a
+  permanent status light and no rotation.
+- Priority: **Show now** > **meeting reminder** > **status light** > **rotation**. If no page is
+  ticked, the panel shows the clock.
+- Limits: works only with the new Teams ("Teams 2.0") on the same PC. During a call Teams usually
+  just writes "Busy" to the log. As this is not an official interface, a Teams update may change the
+  format.
 
 ---
 
-## Claude-Nutzung
+## Claude usage
 
-- Zeigt die Auslastung deines **Claude-Abos**: **Sitzung** (5-Stunden-Limit) und **Woche** –
-  dieselben Werte wie unter claude.ai › Einstellungen › Nutzung.
-- Voraussetzung: **Claude Code ist auf diesem PC angemeldet** (`claude` → `/login`). Das Programm
-  liest das Token aus `%USERPROFILE%\.claude\.credentials.json` und fragt
-  `api.anthropic.com/api/oauth/usage` ab (Standard alle 120 s). Das Token wird nur gelesen, nie
-  verändert oder weitergegeben.
-- Ist die Anmeldung abgelaufen, steht ein Hinweis auf dem Panel – einmal Claude Code öffnen genügt.
-- Farben: grün < 50 %, gelb < 80 %, rot ab 80 %.
-- Symbol wählbar: Claude-Logo oder **Clawd**, das Maskottchen aus Claude Code.
+- Shows how much of your **Claude plan** you have used: **session** (5-hour limit) and **week** –
+  the same numbers as claude.ai › Settings › Usage.
+- Requirement: **Claude Code is signed in on this PC** (`claude` → `/login`). The app reads the
+  token from `%USERPROFILE%\.claude\.credentials.json` and queries
+  `api.anthropic.com/api/oauth/usage` (every 120 s by default). The token is only read – never
+  changed or passed on.
+- If the sign-in has expired, the panel says so – opening Claude Code once is enough.
+- Colours: green < 50 %, yellow < 80 %, red from 80 %.
+- Icon: Claude logo or **Clawd**, the mascot from Claude Code.
 
   ![Clawd](docs/images/clawd.png)
 
 ---
 
-## Kalender (nächstes Meeting)
+## Calendar (next meeting)
 
-![Kalender](docs/images/kalender.png)
+![Calendar](docs/images/calendar.png)
 
-*Nächstes Meeting · Erinnerung kurz vorher · laufendes Meeting · keine Termine*
+*Next meeting · reminder shortly before · meeting in progress · no meetings*
 
-- Seite **„Nächstes Meeting“**: Uhrzeit (bzw. Wochentag + Uhrzeit, wenn nicht heute) und Titel.
-  Läuft gerade ein Meeting: „bis 11:00“.
-- **Erinnerung:** X Minuten vor Beginn (Standard 5) erscheint ein Countdown „in 4 Min“ – mit
-  Vorrang vor Statuslicht und Rotation.
-- Nicht gezählt werden abgesagte, abgelehnte, ganztägige und als „frei“ eingetragene Termine.
-- Abruf alle 5 Minuten. Unter *Verbindungen › Kalender* wählst du die **Quelle**:
+- Page **Next meeting**: time (or weekday + time if not today) and title. During a meeting:
+  "till 11:00".
+- **Reminder:** X minutes before the start (default 5) a countdown "in 4 min" appears – with priority
+  over status light and rotation.
+- Cancelled, declined, all-day and "free" meetings are skipped.
+- Checked every 5 minutes. Under *Connections › Calendar* you choose the **source**:
 
-| Quelle | Anmeldung | Voraussetzung |
+| Source | Sign-in | Requirement |
 |---|---|---|
-| **Outlook auf diesem PC** (Standard) | keine | Klassisches Outlook ist installiert und eingerichtet (auch wenn man sonst das neue Outlook nutzt). Es wird bei Bedarf unsichtbar gestartet und nur gelesen. |
-| **Kalender-Link (ICS)** | keine | In Outlook im Web › Einstellungen › Kalender › Freigegebene Kalender › *Kalender veröffentlichen* einen ICS-Link erzeugen (z. B. „Kann Titel und Orte anzeigen“). Wer den Link kennt, sieht die Termine; manche Firmen schalten das ab. |
-| **Microsoft 365 (Anmeldung)** | einmalig im Browser | App-Registrierung, siehe unten |
+| **Outlook on this PC** (default) | none | Classic Outlook is installed and set up (even if you normally use the new Outlook). It is started hidden when needed and only read. |
+| **Calendar link (ICS)** | none | In Outlook on the web › Settings › Calendar › Shared calendars › *Publish a calendar*, create an ICS link (e.g. "Can view titles and locations"). Anyone with the link can see the meetings; some organisations switch this off. |
+| **Microsoft 365 (sign-in)** | once in the browser | App registration, see below |
 
-### Microsoft 365: App-Registrierung (einmalig, ggf. durch die IT)
+### Microsoft 365: app registration (once, possibly by IT)
 
-Microsoft lässt Programme nur mit einer registrierten App-ID anmelden – ein reiner „Anmelden“-Knopf
-ohne Registrierung ist nicht möglich. Darf man in der Firma keine Apps registrieren, die IT mit
-genau diesen Angaben bitten – oder eine der Quellen ohne Anmeldung nutzen:
+Microsoft only lets apps sign in with a registered app ID – a plain "Sign in" button without a
+registration is not possible. If you may not register apps in your organisation, ask IT with exactly
+these details – or use one of the sources without sign-in:
 
-1. [Entra Admin Center](https://entra.microsoft.com) › **Anwendungen › App-Registrierungen ›
-   Neue Registrierung**
+1. [Entra admin center](https://entra.microsoft.com) › **Applications › App registrations › New
+   registration**
    - Name: `Pixel Panel`
-   - Kontotypen: **Nur Konten in diesem Organisationsverzeichnis**
-   - Umleitungs-URI: Plattform **Öffentlicher Client/nativ (mobil und Desktop)**, URI
-     `http://localhost`
-2. **Authentifizierung** › *Öffentliche Clientflows zulassen*: **Ja**
-3. **API-Berechtigungen** › Berechtigung hinzufügen › Microsoft Graph › **Delegierte
-   Berechtigungen** › `Calendars.Read` (`User.Read` ist schon da). Wenn Benutzer in eurem
-   Mandanten nicht selbst zustimmen dürfen: **Administratorzustimmung erteilen**.
-4. Auf der Übersichtsseite **Anwendungs-ID (Client)** und **Verzeichnis-ID (Mandant)** kopieren.
+   - Account types: **Accounts in this organizational directory only**
+   - Redirect URI: platform **Public client/native (mobile & desktop)**, URI `http://localhost`
+2. **Authentication** › *Allow public client flows*: **Yes**
+3. **API permissions** › Add a permission › Microsoft Graph › **Delegated permissions** ›
+   `Calendars.Read` (`User.Read` is already there). If users in your tenant may not consent
+   themselves: **Grant admin consent**.
+4. On the overview page copy the **Application (client) ID** and **Directory (tenant) ID**.
 
-In Pixel Panel › *Verbindungen › Kalender*: Quelle **Microsoft 365** wählen, beide IDs eintragen,
-*Nächstes Meeting abrufen* anhaken, **Anmelden** – der Browser öffnet die normale Microsoft-Anmeldung. Danach bleibt man angemeldet
-(Token verschlüsselt mit Windows-DPAPI in `%APPDATA%\PixelPanel\m365_token.bin`; **Abmelden**
-löscht es). Die App kann nur lesen, nichts ändern oder senden.
-
----
-
-## Wetter
-
-Unter *Einstellungen › Wetter* einen Ort eingeben und **Ort übernehmen**. Daten von
-[Open-Meteo](https://open-meteo.com) (kostenlos, kein API-Schlüssel), Aktualisierung alle 15 Minuten.
-Die Wetter-Seite zeigt Symbol, aktuelle Temperatur und Tiefst-/Höchstwert des Tages.
+In Pixel Panel › *Connections › Calendar*: choose the source **Microsoft 365**, enter both IDs, tick
+*Fetch next meeting*, click **Sign in** – the browser opens the normal Microsoft sign-in. You stay
+signed in afterwards (token encrypted with Windows DPAPI in `%APPDATA%\PixelPanel\m365_token.bin`;
+**Sign out** deletes it). The app can only read, not change or send anything.
 
 ---
 
-## Einstellungen und Dateien
+## Weather
 
-| Was | Wo |
+Under *Settings › Weather* enter a location and click **Set location**. Data from
+[Open-Meteo](https://open-meteo.com) (free, no API key), updated every 15 minutes. The weather page
+shows an icon, the current temperature and today's low/high.
+
+---
+
+## Settings and files
+
+| What | Where |
 |---|---|
-| Einstellungen | `%APPDATA%\PixelPanel\config.json` (wird beim Ändern automatisch gespeichert) |
+| Settings | `%APPDATA%\PixelPanel\config.json` (saved automatically on every change) |
 | Log | `%APPDATA%\PixelPanel\pixelpanel.log` |
-| LaMetric-Icon-Cache | `%APPDATA%\PixelPanel\icons\` |
+| LaMetric icon cache | `%APPDATA%\PixelPanel\icons\` |
 | Autostart | Registry `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\PixelPanel` |
 
-Zum Zurücksetzen Programm beenden und `config.json` löschen.
+To reset, quit the app and delete `config.json`.
 
 ---
 
-## Fehlerbehebung
+## Troubleshooting
 
-| Problem | Lösung |
+| Problem | Fix |
 |---|---|
-| **Kein Panel gefunden** | Panel an? Handy-App geschlossen / Handy-Bluetooth aus? (Ein verbundenes Panel ist für andere unsichtbar.) Bluetooth am PC an? Näher ran. |
-| **„Panel nicht erreichbar – neuer Versuch läuft“** | Programm versucht es alle 15 s erneut. Panel kurz vom Strom trennen hilft meistens. |
-| **Handy-App verbindet nicht mehr** | Pixel Panel über das Taskleisten-Symbol **beenden** – dann ist das Panel wieder frei. |
-| **Rotation läuft nicht / Panel hängt auf einem Teams-Status** | Unter *Verbindungen* beim Statuslicht nur „Beschäftigt“-artige Status anhaken (nicht „Verfügbar“), und unter *Seiten* mindestens zwei Seiten anhaken. |
-| **Teams-Status bleibt „noch kein Status“** | Nur der neue Teams-Client wird unterstützt. Status einmal in Teams ändern, dann taucht er im Log auf. |
-| **Claude: „Nicht in Claude Code angemeldet“ / „Anmeldung abgelaufen“** | Claude Code starten und ggf. `/login`. |
-| **„Pixel Panel läuft bereits“** | Es läuft schon eine Instanz – Symbol in der Taskleiste (ggf. unter ^). |
-| Sonstiges | `%APPDATA%\PixelPanel\pixelpanel.log` ansehen. |
+| **No panel found** | Panel on? Phone app closed / phone Bluetooth off? (A connected panel is invisible to others.) Bluetooth on the PC on? Move closer. |
+| **"Panel not reachable – retrying"** | The app retries every 15 s. Unplugging the panel briefly usually helps. |
+| **Phone app can't connect anymore** | **Quit** Pixel Panel from the tray icon – then the panel is free again. |
+| **Rotation doesn't run / panel stuck on a Teams status** | Under *Connections*, tick only "busy"-like states for the status light (not "Available"), and tick at least two pages under *Pages*. |
+| **Teams status stays "no status found"** | Only the new Teams client is supported. Change your status in Teams once, then it shows up in the log. |
+| **Claude: "Not signed in to Claude Code" / "Sign-in expired"** | Start Claude Code and `/login` if needed. |
+| **Calendar: "Outlook is not responding"** | Classic Outlook must be installed and have a profile; open it once manually. Otherwise use the ICS link. |
+| **"Pixel Panel is already running"** | An instance is already running – tray icon (maybe under ^). |
+| Anything else | Check `%APPDATA%\PixelPanel\pixelpanel.log`. |
 
 ---
 
-## Entwicklung
+## Development
 
-Voraussetzungen: Windows 10/11 mit Bluetooth LE, [uv](https://docs.astral.sh/uv/) (oder Python 3.13 + pip).
+Requirements: Windows 10/11 with Bluetooth LE, [uv](https://docs.astral.sh/uv/) (or Python 3.13 + pip).
 
 ```powershell
 git clone https://github.com/Nipo-98/work-pixelclock.git
@@ -288,74 +293,73 @@ cd work-pixelclock
 uv venv --python 3.13 .venv
 uv pip install --python .venv\Scripts\python.exe -r requirements.txt
 
-.venv\Scripts\python.exe -m pixelpanel      # starten
-.venv\Scripts\python.exe -m pytest tests    # Tests
+.venv\Scripts\python.exe -m pixelpanel      # run
+.venv\Scripts\python.exe -m pytest tests    # tests
 ```
 
-### .exe bauen
+### Build the exe
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build.ps1
-# -> dist\PixelPanel.exe  (eine Datei, ~50 MB, keine Installation nötig)
+# -> dist\PixelPanel.exe  (single file, ~60 MB, no installation needed)
 ```
 
-`build.ps1` legt bei Bedarf die virtuelle Umgebung an, erzeugt das Programm-Icon und baut mit
-PyInstaller (`--onefile --windowed`).
+`build.ps1` creates the virtual environment if needed, generates the app icon and builds with
+PyInstaller (`--onefile --windowed`). It stops with an error if Pixel Panel is still running or the
+exe was not rewritten.
 
-### Projektstruktur
+### Project layout
 
 ```
 pixelpanel/
-  __main__.py     Start, Logging
-  gui.py          Fenster, Tabs, Vorschau, Taskleisten-Symbol (PySide6)
-  engine.py       Hintergrund-Thread: Verbindung, Rotation, Prioritäten, Senden
-  ble.py          Bluetooth-LE-Verbindung zum Panel (bleak), Upload mit ACKs
-  pages.py        Seite + Live-Daten -> Bild/GIF (Emojis, Icons, Teams, Claude, Wetter …)
-  transitions.py  Übergänge zwischen Seiten (inkl. Nyan Cat)
-  sources.py      Teams-Log, Claude-Nutzung, Wetter (Open-Meteo)
-  m365.py         Microsoft-365-Kalender (MSAL-Anmeldung, Graph calendarView)
-  calendars.py    Kalender ohne Anmeldung: klassisches Outlook (COM) und ICS-Link
-  theme.py        Farben und Stylesheet der Oberfläche
-  config.py       Einstellungen (JSON in %APPDATA%\PixelPanel)
-  autostart.py    Start mit Windows (Registry, ohne Admin)
-  core/           Protokoll, Pixelschrift, Icons, Effekte, Zeichnen – aus ha-pixelclock
+  __main__.py     start, logging
+  gui.py          window, sections, preview, tray icon (PySide6)
+  theme.py        colours and stylesheet of the window
+  engine.py       background thread: connection, rotation, priorities, sending
+  ble.py          Bluetooth LE connection to the panel (bleak), upload with ACKs
+  pages.py        page + live data -> picture/GIF (emojis, icons, Teams, Claude, weather …)
+  transitions.py  transitions between pages (incl. Nyan Cat)
+  sources.py      Teams log, Claude usage, weather (Open-Meteo)
+  calendars.py    calendar without sign-in: classic Outlook (COM) and ICS link
+  m365.py         Microsoft 365 calendar (MSAL sign-in, Graph calendarView)
+  config.py       settings (JSON in %APPDATA%\PixelPanel)
+  autostart.py    start with Windows (registry, no admin)
+  core/           protocol, pixel font, icons, effects, drawing – from ha-pixelclock
 tests/            pytest
-build.ps1         baut dist\PixelPanel.exe
-run.py            Einstiegspunkt für PyInstaller
+build.ps1         builds dist\PixelPanel.exe
+run.py            entry point for PyInstaller
 ```
 
 ---
 
-## Wie es funktioniert
+## How it works
 
-- **Protokoll:** Das Panel bietet den BLE-Dienst `0x00FA`. Befehle gehen an `FA02`, Antworten
-  kommen als Benachrichtigung auf `FA03`. Jeder Befehl ist `<Länge u16 LE><cmd><typ><daten>`.
-  Direkt unterstützt: Strom, Helligkeit, Uhrzeit, eingebaute Uhren, Ausrichtung – und das Hochladen
-  eines PNG/GIF in 12-KB-Fenstern, die das Panel einzeln bestätigt.
-- **Alles andere ist ein Bild:** Text, Laufschrift, Emojis, Effekte, Teams- und Claude-Anzeige werden
-  auf dem PC mit Pillow pixelgenau gezeichnet und als PNG (still) oder GIF (animiert) gesendet. Ein
-  animiertes GIF von ~20 KB ist in unter einer Sekunde übertragen; die Animation läuft danach im Panel
-  selbst weiter.
-- **Übergänge:** Beim Seitenwechsel wird erst ein kurzes GIF vom alten zum neuen Bild gesendet,
-  dessen letztes Bild (die neue Seite) 5 s stehen bleibt; nach dem Abspielen folgt die eigentliche
-  Seite. So springt das Panel nie zurück an den Anfang des Übergangs.
-- **Nur bei Änderungen senden:** Jede Seite hat eine „Signatur“ (z. B. Uhrzeit auf die Minute,
-  Teams-Status, Claude-Prozente). Nur wenn sie sich ändert, wird neu gesendet.
-- **Verbindung:** bleibt dauerhaft offen; bei Abbruch wird alle 15 s neu verbunden. Die Panel-Uhr
-  wird beim Verbinden und täglich gestellt.
+- **Protocol:** the panel offers the BLE service `0x00FA`. Commands go to `FA02`, answers arrive as
+  notifications on `FA03`. Every command is `<length u16 LE><cmd><type><data>`. Supported directly:
+  power, brightness, time, built-in clocks, orientation – and uploading a PNG/GIF in 12 KB windows
+  that the panel acknowledges one by one.
+- **Everything else is a picture:** text, scrolling text, emojis, effects, Teams and Claude pages are
+  drawn pixel-exact on the PC with Pillow and sent as PNG (still) or GIF (animated). An animated GIF
+  of ~20 KB is transferred in under a second; the animation then keeps running on the panel itself.
+- **Transitions:** on a page change a short GIF from the old to the new picture is sent first; its
+  last frame (the new page) is held for 5 s, and after it has played the real page follows. So the
+  panel never jumps back to the start of the transition.
+- **Only send changes:** every page has a "signature" (e.g. time to the minute, Teams status, Claude
+  percentages). It is only sent again when that changes.
+- **Connection:** stays open; after a drop it reconnects every 15 s. The panel clock is set on
+  connect and once a day.
 
 ---
 
-## Herkunft und Danksagung
+## Credits
 
-Protokoll, Pixelschrift, Icons, Effekte und Zeichenfunktionen (`pixelpanel/core/`) stammen – mit
-Erlaubnis des Autors – aus
-[dominguez-posh/ha-pixelclock](https://github.com/dominguez-posh/ha-pixelclock), einer
-Home-Assistant-Integration für dieselben Panels. Dessen Protokoll basiert wiederum auf dem
-Reverse Engineering in [pypixelcolor](https://github.com/lucagoc/pypixelcolor) (MIT).
+Protocol, pixel font, icons, effects and drawing functions (`pixelpanel/core/`) come – with the
+author's permission – from [dominguez-posh/ha-pixelclock](https://github.com/dominguez-posh/ha-pixelclock),
+a Home Assistant integration for the same panels. Its protocol in turn is based on the reverse
+engineering in [pypixelcolor](https://github.com/lucagoc/pypixelcolor) (MIT).
 
-Wetterdaten: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Icons optional von
-[LaMetric](https://developer.lametric.com/icons). Emojis: Windows-Schrift „Segoe UI Emoji“
-(wird zur Laufzeit vom System verwendet, nicht mitgeliefert).
+Weather data: [Open-Meteo](https://open-meteo.com) (CC BY 4.0). Optional icons from
+[LaMetric](https://developer.lametric.com/icons). Emojis: Windows font "Segoe UI Emoji" (used from
+the system at runtime, not bundled).
 
-Nicht offiziell mit Action, Briloner, iPixels, Microsoft oder Anthropic verbunden.
+Not affiliated with Action, Briloner, iPixels, Microsoft or Anthropic.

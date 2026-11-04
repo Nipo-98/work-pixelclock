@@ -16,22 +16,22 @@ CONFIG_FILE = APP_DIR / "config.json"
 ICON_CACHE = APP_DIR / "icons"
 
 PAGE_TYPES: dict[str, str] = {
-    "clock": "Uhr",
-    "native_clock": "Uhr (eingebaut im Panel)",
-    "date": "Datum",
+    "clock": "Clock",
+    "native_clock": "Clock (built into the panel)",
+    "date": "Date",
     "text": "Text / Emoji",
-    "image": "Bild / GIF",
-    "weather": "Wetter",
-    "teams": "Teams-Status",
-    "claude": "Claude-Nutzung",
-    "calendar": "Nächstes Meeting",
+    "image": "Image / GIF",
+    "weather": "Weather",
+    "teams": "Teams status",
+    "claude": "Claude usage",
+    "calendar": "Next meeting",
 }
 
 PAGE_DEFAULTS: dict[str, dict] = {
     "clock": {"color": "#ffffff", "effect": "none", "seconds": False, "weekday_bar": True},
     "native_clock": {"style": 1, "show_date": True},
     "date": {"color": "#00c8e6", "icon": "calendar", "effect": "none"},
-    "text": {"text": "Hallo!", "color": "#ffbe00", "icon": "😀", "effect": "none"},
+    "text": {"text": "Hello!", "color": "#ffbe00", "icon": "😀", "effect": "none"},
     "image": {"path": ""},
     "weather": {"color": "#ffffff", "effect": "none"},
     "teams": {},

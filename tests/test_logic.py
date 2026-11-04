@@ -74,6 +74,20 @@ def test_claude_page_logo_choice():
         assert out.frames[0].size == (64, 16)
 
 
+def test_panel_texts_are_english_and_fit():
+    from pixelpanel.core import font
+    for state in sources.TEAMS_STATES:
+        long_label, _ = sources.teams_label(state)
+        short_label, _ = sources.teams_label(state, short=True)
+        assert font.text_width(long_label) <= 64, long_label   # status light: full width
+        assert font.text_width(short_label) <= 47, short_label  # next to the dot icon
+    assert sources.teams_label("Busy") == ("Busy", (230, 20, 20))
+    page = config.new_page("date")
+    screen_lines = pages.render_page(page, pages.Context(), 64, 16, datetime(2026, 9, 30, 9, 0))
+    assert screen_lines.frames[0].size == (64, 16)
+    assert pages.date_lines(datetime(2026, 9, 30)) == ["Wed", "30 Sep"]
+
+
 def test_wmo_icon():
     assert sources.wmo_icon(0) == "sun"
     assert sources.wmo_icon(0, is_day=False) == "moon"

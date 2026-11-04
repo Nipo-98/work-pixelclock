@@ -24,12 +24,12 @@ log = logging.getLogger(__name__)
 
 EMOJIS = ["😀", "😎", "🥳", "❤️", "👍", "🔥", "☕", "🍕", "🍺", "🎉", "⭐", "✅", "❌", "⚠️", "💡", "🚀",
           "💻", "📞", "🎧", "🏠", "🌞", "🌧️", "❄️", "🐱", "🐶", "🤖", "👻", "💤", "🍀", "🎵"]
-EFFECTS_DE = {"none": "Keiner", "rainbow": "Regenbogen-Text", "matrix": "Matrix", "twinkle": "Funkeln",
-              "fire": "Feuer", "plasma": "Plasma", "snow": "Schnee", "rain": "Regen", "pulse": "Pulsieren"}
-ORIENTATIONS_DE = {"landscape": "Normal", "upside_down": "Auf dem Kopf",
-                   "portrait_left": "Hochkant (links oben)", "portrait_right": "Hochkant (rechts oben)"}
-CLAUDE_SHOW = {"both": "Sitzung (5 h) + Woche", "session": "Nur Sitzung (5 h) mit Balken",
-               "week": "Nur Woche mit Balken"}
+EFFECT_NAMES = {"none": "None", "rainbow": "Rainbow text", "matrix": "Matrix", "twinkle": "Twinkle",
+                "fire": "Fire", "plasma": "Plasma", "snow": "Snow", "rain": "Rain", "pulse": "Pulse"}
+ORIENTATION_NAMES = {"landscape": "Normal", "upside_down": "Upside down",
+                     "portrait_left": "Portrait (left end up)", "portrait_right": "Portrait (right end up)"}
+CLAUDE_SHOW = {"both": "Session (5 h) + week", "session": "Session (5 h) only, with bar",
+               "week": "Week only, with bar"}
 PREVIEW_WIDTH = 640
 
 
@@ -105,7 +105,7 @@ class ColorButton(QPushButton):
                            "border-radius:6px; padding:5px 8px;")
 
     def _pick(self) -> None:
-        c = QColorDialog.getColor(QColor(self.value), self, "Farbe wählen")
+        c = QColorDialog.getColor(QColor(self.value), self, "Choose a colour")
         if c.isValid():
             self.set(c.name())
             self.changed.emit(self.value)
@@ -125,18 +125,18 @@ class IconField(QWidget):
         self.combo.addItem("")
         self.combo.addItems(EMOJIS)
         self.combo.addItems(icons.BUILTIN_NAMES)
-        self.combo.setToolTip("Emoji, eingebautes Icon, LaMetric-Icon (z. B. lm:2867) oder Bilddatei")
+        self.combo.setToolTip("Emoji, built-in icon, LaMetric icon (e.g. lm:2867) or an image file")
         self.combo.setCurrentText(value or "")
         self.combo.currentTextChanged.connect(self.changed.emit)
         browse = QToolButton()
         browse.setText("…")
-        browse.setToolTip("Bilddatei als Icon wählen")
+        browse.setToolTip("Use an image file as the icon")
         browse.clicked.connect(self._browse)
         lay.addWidget(self.combo, 1)
         lay.addWidget(browse)
 
     def _browse(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Icon wählen", "", "Bilder (*.png *.gif *.jpg *.bmp)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose an icon", "", "Images (*.png *.gif *.jpg *.bmp)")
         if path:
             self.combo.setCurrentText(path)
 
@@ -144,7 +144,7 @@ class IconField(QWidget):
 def effect_combo(value: str) -> QComboBox:
     combo = QComboBox()
     for key in effects.EFFECTS:
-        combo.addItem(EFFECTS_DE.get(key, key), key)
+        combo.addItem(EFFECT_NAMES.get(key, key), key)
     combo.setCurrentIndex(max(0, combo.findData(value)))
     return combo
 
@@ -164,7 +164,7 @@ class PageEditor(QWidget):
         while self.form.rowCount():
             self.form.removeRow(0)
         if page is None:
-            self.form.addRow(QLabel("Links eine Seite wählen oder mit „+“ hinzufügen."))
+            self.form.addRow(QLabel("Pick a page on the left or add one with + Page."))
             return
         t = page["type"]
         self.form.addRow(QLabel(f"<b>{config.PAGE_TYPES[t]}</b>"))
@@ -173,11 +173,11 @@ class PageEditor(QWidget):
         dur.setSuffix(" s")
         dur.setValue(int(page.get("duration", 10)))
         dur.valueChanged.connect(lambda v: self._set("duration", v))
-        self.form.addRow("Anzeigedauer", dur)
+        self.form.addRow("Duration", dur)
 
         if t == "text":
             text = QLineEdit(page.get("text", ""))
-            text.setPlaceholderText("Text – Emojis im Text werden zum Icon")
+            text.setPlaceholderText("Text – an emoji in the text becomes the icon")
             text.textChanged.connect(lambda v: self._set("text", v))
             self.form.addRow("Text", text)
         if t in ("text", "date"):
@@ -192,7 +192,7 @@ class PageEditor(QWidget):
             eff.currentIndexChanged.connect(lambda _: self._set("effect", eff.currentData()))
             self.form.addRow("Effekt", eff)
         if t == "clock":
-            for key, label in (("seconds", "Sekunden anzeigen"), ("weekday_bar", "Wochentag-Leiste")):
+            for key, label in (("seconds", "Show seconds"), ("weekday_bar", "Weekday bar")):
                 cb = QCheckBox(label)
                 cb.setChecked(bool(page.get(key)))
                 cb.toggled.connect(lambda v, k=key: self._set(k, v))
@@ -203,47 +203,47 @@ class PageEditor(QWidget):
             style.setValue(int(page.get("style", 1)))
             style.valueChanged.connect(lambda v: self._set("style", v))
             self.form.addRow("Design (0–8)", style)
-            cb = QCheckBox("Datum anzeigen")
+            cb = QCheckBox("Show date")
             cb.setChecked(bool(page.get("show_date", True)))
             cb.toggled.connect(lambda v: self._set("show_date", v))
             self.form.addRow("", cb)
-            self.form.addRow(QLabel("Die Uhr läuft im Panel selbst (keine Vorschau)."))
+            self.form.addRow(QLabel("The clock runs on the panel itself (no preview)."))
         if t == "image":
             row = QWidget()
             lay = QHBoxLayout(row)
             lay.setContentsMargins(0, 0, 0, 0)
             path = QLineEdit(page.get("path", ""))
             path.textChanged.connect(lambda v: self._set("path", v))
-            btn = QPushButton("Durchsuchen…")
+            btn = QPushButton("Browse…")
             btn.clicked.connect(lambda: self._browse_image(path))
             lay.addWidget(path, 1)
             lay.addWidget(btn)
-            self.form.addRow("Bild / GIF", row)
-            self.form.addRow(QLabel("Wird auf 64×16 verkleinert; animierte GIFs laufen auf dem Panel."))
+            self.form.addRow("Image / GIF", row)
+            self.form.addRow(QLabel("Scaled down to 64×16; animated GIFs play on the panel."))
         if t == "weather":
-            self.form.addRow(QLabel("Den Ort stellst du unter „Einstellungen“ ein."))
+            self.form.addRow(QLabel("Set the location under Settings."))
         if t == "teams":
-            self.form.addRow(QLabel("Zeigt deinen aktuellen Teams-Status als farbigen Punkt.\n"
-                                    "Das Statuslicht (ganzes Panel) stellst du unter „Teams & Claude“ ein."))
+            self.form.addRow(QLabel("Shows your current Teams status as a coloured dot.\n"
+                                    "The status light (whole panel) is set under Connections."))
         if t == "calendar":
-            self.form.addRow(QLabel("Zeigt Uhrzeit und Titel deines nächsten Meetings.\n"
-                                    "Anmeldung und Erinnerung stellst du im Tab „Kalender“ ein."))
+            self.form.addRow(QLabel("Shows time and title of your next meeting.\n"
+                                    "Calendar source and reminder are set under Connections."))
         if t == "claude":
             show = QComboBox()
             for key, label in CLAUDE_SHOW.items():
                 show.addItem(label, key)
             show.setCurrentIndex(max(0, show.findData(page.get("show", "both"))))
             show.currentIndexChanged.connect(lambda _: self._set("show", show.currentData()))
-            self.form.addRow("Anzeige", show)
+            self.form.addRow("Show", show)
             logo = QComboBox()
             for key, label in pages.CLAUDE_LOGOS.items():
                 logo.addItem(QIcon(pil_to_pixmap(pages.CUSTOM_ICONS[key]().resize((32, 32 * pages.CUSTOM_ICONS[key]().height // 16), Image.Resampling.NEAREST))), label, key)
             logo.setCurrentIndex(max(0, logo.findData(page.get("logo", "claude"))))
             logo.currentIndexChanged.connect(lambda _: self._set("logo", logo.currentData()))
-            self.form.addRow("Symbol", logo)
+            self.form.addRow("Icon", logo)
 
     def _browse_image(self, field: QLineEdit) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Bild wählen", "", "Bilder (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose an image", "", "Images (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
         if path:
             field.setText(path)
 
@@ -290,7 +290,7 @@ class MainWindow(QMainWindow):
         self.nav = QListWidget(objectName="nav")
         self.nav.setIconSize(QSize(18, 18))
         side.addWidget(self.nav, 1)
-        self.conn_label = QLabel("Nicht verbunden", objectName="conn")
+        self.conn_label = QLabel("Not connected", objectName="conn")
         self.conn_label.setWordWrap(True)
         side.addWidget(self.conn_label)
         outer.addWidget(sidebar)
@@ -302,10 +302,10 @@ class MainWindow(QMainWindow):
         body.addWidget(self._build_header())
         self.stack = QStackedWidget()
         sections = [
-            ("Anzeigen", "", scrolled(self._build_now_tab())),
-            ("Seiten", "", self._build_pages_tab()),
-            ("Verbindungen", "", scrolled(self._build_live_tab())),
-            ("Einstellungen", "", scrolled(self._build_settings_tab())),
+            ("Show now", "\ue768", scrolled(self._build_now_tab())),
+            ("Pages", "\ue8fd", self._build_pages_tab()),
+            ("Connections", "\ue71b", scrolled(self._build_live_tab())),
+            ("Settings", "\ue713", scrolled(self._build_settings_tab())),
         ]
         for title, glyph, widget in sections:
             self.nav.addItem(QListWidgetItem(glyph_icon(glyph), title))
@@ -335,16 +335,16 @@ class MainWindow(QMainWindow):
         row = QHBoxLayout()
         row.setSpacing(10)
         self.showing = QLabel("", objectName="showing")
-        nxt = QPushButton("Nächste Seite")
-        nxt.setIcon(glyph_icon(""))
+        nxt = QPushButton("Next page")
+        nxt.setIcon(glyph_icon("\ue893"))
         nxt.clicked.connect(self.engine.next_page)
         sun = QLabel()
-        sun.setPixmap(glyph_icon("").pixmap(18, 18))
+        sun.setPixmap(glyph_icon("\ue706").pixmap(18, 18))
         self.brightness = QSlider(Qt.Orientation.Horizontal)
         self.brightness.setRange(1, 100)
         self.brightness.setFixedWidth(180)
         self.brightness.setValue(int(self.cfg.get("brightness", 60)))
-        self.brightness.setToolTip("Helligkeit")
+        self.brightness.setToolTip("Brightness")
         self.bright_label = QLabel(f"{self.brightness.value()} %", objectName="muted")
         self.bright_label.setFixedWidth(40)
         self.brightness.valueChanged.connect(lambda v: self.bright_label.setText(f"{v} %"))
@@ -353,10 +353,10 @@ class MainWindow(QMainWindow):
             lambda v: None if self.brightness.isSliderDown() else self._set_cfg("brightness", v))
         self.power = QPushButton(objectName="power")
         self.power.setCheckable(True)
-        self.power.setIcon(glyph_icon(""))
+        self.power.setIcon(glyph_icon("\ue7e8"))
         self.power.setChecked(self.cfg.get("power", True))
-        self.power.setText("An" if self.power.isChecked() else "Aus")
-        self.power.toggled.connect(lambda v: (self.power.setText("An" if v else "Aus"), self._set_cfg("power", v)))
+        self.power.setText("On" if self.power.isChecked() else "Off")
+        self.power.toggled.connect(lambda v: (self.power.setText("On" if v else "Off"), self._set_cfg("power", v)))
         row.addWidget(self.showing, 1)
         row.addWidget(nxt)
         row.addSpacing(12)
@@ -379,22 +379,22 @@ class MainWindow(QMainWindow):
         self.devices.setMinimumWidth(260)
         if self.cfg.get("address"):
             self.devices.addItem(f"{self.cfg.get('name') or ''} ({self.cfg['address']})", self.cfg["address"])
-        scan = QPushButton("Suchen")
+        scan = QPushButton("Search")
         scan.clicked.connect(self._scan)
-        connect = QPushButton("Verbinden", objectName="primary")
+        connect = QPushButton("Connect", objectName="primary")
         connect.clicked.connect(self._connect_selected)
         row.addWidget(self.devices, 1)
         row.addWidget(scan)
         row.addWidget(connect)
-        form.addRow("Gerät", row)
+        form.addRow("Device", row)
         self.scan_info = QLabel("", objectName="muted")
         form.addRow("", self.scan_info)
         orient = QComboBox()
-        for key, label in ORIENTATIONS_DE.items():
+        for key, label in ORIENTATION_NAMES.items():
             orient.addItem(label, key)
         orient.setCurrentIndex(max(0, orient.findData(self.cfg.get("orientation", "landscape"))))
         orient.currentIndexChanged.connect(lambda _: self._set_cfg("orientation", orient.currentData()))
-        form.addRow("Ausrichtung", orient)
+        form.addRow("Orientation", orient)
         return box
 
     # --- tab: show now ---------------------------------------------------------------------------
@@ -405,7 +405,7 @@ class MainWindow(QMainWindow):
         box = QGroupBox("Text / Emoji")
         form = QFormLayout(box)
         self.now_text = QLineEdit()
-        self.now_text.setPlaceholderText("z. B. Bin in 5 Min zurück ☕")
+        self.now_text.setPlaceholderText("e.g. Back in 5 min ☕")
         self.now_text.returnPressed.connect(self._send_text)
         self.now_icon = IconField("")
         self.now_color = ColorButton("#ffbe00")
@@ -414,17 +414,17 @@ class MainWindow(QMainWindow):
         self.now_secs.setRange(0, 86400)
         self.now_secs.setValue(0)
         self.now_secs.setSuffix(" s")
-        self.now_secs.setSpecialValueText("bis „Zurück zur Rotation“")
+        self.now_secs.setSpecialValueText("until Back to rotation")
         form.addRow("Text", self.now_text)
         form.addRow("Icon / Emoji", self.now_icon)
-        form.addRow("Farbe", self.now_color)
-        form.addRow("Effekt", self.now_effect)
-        form.addRow("Dauer", self.now_secs)
+        form.addRow("Colour", self.now_color)
+        form.addRow("Effect", self.now_effect)
+        form.addRow("Duration", self.now_secs)
         buttons = QHBoxLayout()
-        send = QPushButton("Anzeigen", objectName="primary")
+        send = QPushButton("Show", objectName="primary")
         send.setDefault(True)
         send.clicked.connect(self._send_text)
-        add = QPushButton("Als Seite in die Rotation")
+        add = QPushButton("Add to rotation")
         add.clicked.connect(self._text_to_rotation)
         buttons.addWidget(send)
         buttons.addWidget(add)
@@ -432,25 +432,25 @@ class MainWindow(QMainWindow):
         form.addRow(buttons)
         lay.addWidget(box)
 
-        box = QGroupBox("Bild, GIF oder eingebaute Uhr")
+        box = QGroupBox("Image, GIF or built-in clock")
         row = QHBoxLayout(box)
-        img = QPushButton("Bild / GIF anzeigen…")
+        img = QPushButton("Show image / GIF…")
         img.clicked.connect(self._send_image)
         self.native_style = QSpinBox()
         self.native_style.setRange(0, 8)
         self.native_style.setValue(1)
-        native = QPushButton("Eingebaute Uhr anzeigen")
+        native = QPushButton("Show built-in clock")
         native.clicked.connect(lambda: self.engine.show_message(
             {**config.new_page("native_clock"), "style": self.native_style.value()}, None))
         row.addWidget(img)
         row.addSpacing(20)
-        row.addWidget(QLabel("Uhr-Design"))
+        row.addWidget(QLabel("Clock design"))
         row.addWidget(self.native_style)
         row.addWidget(native)
         row.addStretch(1)
         lay.addWidget(box)
 
-        back = QPushButton("Zurück zur Rotation")
+        back = QPushButton("Back to rotation")
         back.clicked.connect(self.engine.clear_message)
         lay.addWidget(back, alignment=Qt.AlignmentFlag.AlignLeft)
         lay.addStretch(1)
@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
         self._changed()
 
     def _send_image(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Bild wählen", "", "Bilder (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
+        path, _ = QFileDialog.getOpenFileName(self, "Choose an image", "", "Images (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
         if path:
             self.engine.show_message({**config.new_page("image"), "path": path}, self.now_secs.value() or None)
 
@@ -485,25 +485,25 @@ class MainWindow(QMainWindow):
             trans.addItem(label, key)
         trans.setCurrentIndex(max(0, trans.findData(self.cfg.get("transition", "push_left"))))
         trans.currentIndexChanged.connect(lambda _: self._set_cfg("transition", trans.currentData()))
-        trans.setToolTip("Wie die nächste Seite aufs Panel kommt")
-        trans_row.addWidget(QLabel("Übergang"))
+        trans.setToolTip("How the next page comes onto the panel")
+        trans_row.addWidget(QLabel("Transition"))
         trans_row.addWidget(trans, 1)
         left.addLayout(trans_row)
         self.page_list = QListWidget()
         self.page_list.currentRowChanged.connect(self._select_page)
         self.page_list.itemChanged.connect(self._page_checked)
-        left.addWidget(QLabel("Haken = in der Rotation. Reihenfolge = Anzeigereihenfolge."))
+        left.addWidget(QLabel("Ticked pages rotate, top to bottom."))
         left.addWidget(self.page_list, 1)
         btns = QHBoxLayout()
         add = QToolButton()
-        add.setText("+ Seite")
+        add.setText("+ Page")
         add.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
         menu = QMenu(add)
         for key, label in config.PAGE_TYPES.items():
             menu.addAction(label, lambda k=key: self._add_page(k))
         add.setMenu(menu)
         btns.addWidget(add)
-        for text, slot in (("Entfernen", self._remove_page), ("▲", lambda: self._move_page(-1)),
+        for text, slot in (("Remove", self._remove_page), ("▲", lambda: self._move_page(-1)),
                            ("▼", lambda: self._move_page(1))):
             b = QPushButton(text)
             b.clicked.connect(slot)
@@ -567,7 +567,7 @@ class MainWindow(QMainWindow):
             self._reload_pages(new)
             self._changed()
 
-    # --- tab: Teams & Claude ---------------------------------------------------------------------
+    # --- section: connections (Teams, Claude, calendar) ---------------------------------------------------------------------
 
     def _build_live_tab(self) -> QWidget:
         w = QWidget()
@@ -577,17 +577,17 @@ class MainWindow(QMainWindow):
         form = QFormLayout(box)
         self.teams_now = QLabel("–")
         self.teams_now.setStyleSheet("font-weight:bold")
-        form.addRow("Aktueller Status", self.teams_now)
-        en = QCheckBox("Teams-Status auslesen")
+        form.addRow("Current status", self.teams_now)
+        en = QCheckBox("Read Teams status")
         en.setChecked(teams.get("enabled", True))
         en.toggled.connect(lambda v: self._set_sub("teams", "enabled", v))
         form.addRow("", en)
-        frame_cb = QCheckBox("Statusleiste – links und rechts ein Streifen in der Teams-Farbe")
+        frame_cb = QCheckBox("Status bar – a stripe in the Teams colour on the left and right")
         frame_cb.setChecked(teams.get("status_frame", True))
         frame_cb.toggled.connect(lambda v: self._set_sub("teams", "status_frame", v))
         bar_width = QComboBox()
         for n in (1, 2, 3):
-            bar_width.addItem(f"{n} Pixel breit", n)
+            bar_width.addItem(f"{n} px wide", n)
         bar_width.setCurrentIndex(max(0, bar_width.findData(int(teams.get("bar_width", 2)))))
         bar_width.currentIndexChanged.connect(lambda _: self._set_sub("teams", "bar_width", bar_width.currentData()))
         frame_cb.toggled.connect(bar_width.setEnabled)
@@ -597,9 +597,9 @@ class MainWindow(QMainWindow):
         row.addWidget(bar_width)
         row.addStretch(1)
         form.addRow("", row)
-        self.light_cb = QCheckBox("Statuslicht – ganzes Panel leuchtet, Rotation pausiert bei:")
-        self.light_cb.setToolTip("Nur Status anhaken, bei denen die Rotation wirklich anhalten soll "
-                                 "(z. B. Beschäftigt). Nur „Sofort anzeigen“ hat noch Vorrang.")
+        self.light_cb = QCheckBox("Status light – the whole panel lights up and the rotation pauses for:")
+        self.light_cb.setToolTip("Only tick states that should really stop the rotation "
+                                 "(e.g. Busy). Only Show now takes priority over it.")
         self.light_cb.setChecked(teams.get("status_light", True))
         self.light_cb.toggled.connect(lambda v: self._set_sub("teams", "status_light", v))
         form.addRow("", self.light_cb)
@@ -619,20 +619,20 @@ class MainWindow(QMainWindow):
         grid.addLayout(col)
         grid.addStretch(1)
         form.addRow(states)
-        hint = QLabel("Der Status wird aus der Teams-Logdatei gelesen – ohne Anmeldung oder Admin-Rechte. "
-                      "Er ändert sich, sobald Teams ihn selbst ändert.", objectName="hint")
+        hint = QLabel("The status is read from the Teams log file – no sign-in, no admin rights. "
+                      "It changes as soon as Teams changes it.", objectName="hint")
         hint.setWordWrap(True)
         form.addRow(hint)
         lay.addWidget(box)
 
         claude = self.cfg["claude"]
-        box = QGroupBox("Claude-Nutzung")
+        box = QGroupBox("Claude usage")
         form = QFormLayout(box)
         self.claude_now = QLabel("–")
         self.claude_now.setStyleSheet("font-weight:bold")
         self.claude_now.setWordWrap(True)
-        form.addRow("Aktuell", self.claude_now)
-        en = QCheckBox("Nutzung abrufen")
+        form.addRow("Now", self.claude_now)
+        en = QCheckBox("Fetch usage")
         en.setChecked(claude.get("enabled", True))
         en.toggled.connect(lambda v: self._set_sub("claude", "enabled", v))
         form.addRow("", en)
@@ -641,15 +641,15 @@ class MainWindow(QMainWindow):
         interval.setSuffix(" s")
         interval.setValue(int(claude.get("interval", 120)))
         interval.valueChanged.connect(lambda v: self._set_sub("claude", "interval", v))
-        refresh = QPushButton("Jetzt aktualisieren")
+        refresh = QPushButton("Refresh now")
         refresh.clicked.connect(self.engine.refresh_claude)
         row = QHBoxLayout()
         row.addWidget(interval)
         row.addWidget(refresh)
         row.addStretch(1)
-        form.addRow("Abfrage alle", row)
-        hint = QLabel("Nutzt die Anmeldung von Claude Code auf diesem PC. „Sitzung“ ist das 5-Stunden-Limit, "
-                      "„Woche“ das Wochenlimit deines Abos – wie unter claude.ai › Einstellungen › Nutzung.",
+        form.addRow("Check every", row)
+        hint = QLabel("Uses the Claude Code sign-in on this PC. Session is the 5-hour limit, week the weekly limit "
+                      "of your plan – the same numbers as claude.ai › Settings › Usage.",
                       objectName="hint")
         hint.setWordWrap(True)
         form.addRow(hint)
@@ -662,9 +662,9 @@ class MainWindow(QMainWindow):
 
     def _build_calendar_box(self) -> QGroupBox:
         cal = self.cfg["calendar"]
-        box = QGroupBox("Kalender")
+        box = QGroupBox("Calendar")
         form = QFormLayout(box)
-        en = QCheckBox("Nächstes Meeting abrufen")
+        en = QCheckBox("Fetch next meeting")
         en.setChecked(cal.get("enabled", False))
         en.toggled.connect(lambda v: self._set_sub("calendar", "enabled", v))
         form.addRow("", en)
@@ -672,11 +672,11 @@ class MainWindow(QMainWindow):
         for key, label in calendars.PROVIDERS.items():
             provider.addItem(label, key)
         provider.setCurrentIndex(max(0, provider.findData(cal.get("provider", "outlook"))))
-        form.addRow("Quelle", provider)
+        form.addRow("Source", provider)
 
         # one block of settings per source; only the chosen one is visible
-        outlook = QLabel("Liest den Kalender aus dem klassischen Outlook auf diesem PC – ohne Anmeldung. "
-                         "Outlook muss eingerichtet sein; es startet bei Bedarf unsichtbar im Hintergrund.",
+        outlook = QLabel("Reads the calendar from classic Outlook on this PC – no sign-in. "
+                         "Outlook has to be set up; it starts hidden in the background when needed.",
                          objectName="hint")
         outlook.setWordWrap(True)
         ics = QWidget()
@@ -686,30 +686,30 @@ class MainWindow(QMainWindow):
         ics_url.setPlaceholderText("https://outlook.office365.com/owa/calendar/…/calendar.ics")
         ics_url.editingFinished.connect(lambda: self._set_sub("calendar", "ics_url", ics_url.text().strip()))
         ics_form.addRow("Link", ics_url)
-        ics_hint = QLabel("Outlook im Web › Einstellungen › Kalender › Freigegebene Kalender › Kalender "
-                          "veröffentlichen › ICS-Link kopieren. Wer den Link kennt, sieht die Termine.",
+        ics_hint = QLabel("Outlook on the web › Settings › Calendar › Shared calendars › Publish a calendar "
+                          "› copy the ICS link. Anyone with the link can see the meetings.",
                           objectName="hint")
         ics_hint.setWordWrap(True)
         ics_form.addRow(ics_hint)
         graph = QWidget()
         graph_form = QFormLayout(graph)
         graph_form.setContentsMargins(0, 0, 0, 0)
-        for key, label in (("client_id", "Anwendungs-ID"), ("tenant_id", "Verzeichnis-ID")):
+        for key, label in (("client_id", "Application ID"), ("tenant_id", "Directory ID")):
             field = QLineEdit(cal.get(key, ""))
             field.setPlaceholderText("xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx")
             field.editingFinished.connect(lambda f=field, k=key: self._set_sub("calendar", k, f.text().strip()))
             graph_form.addRow(label, field)
         row = QHBoxLayout()
-        sign_in = QPushButton("Anmelden", objectName="primary")
-        sign_in.setToolTip("Öffnet die Microsoft-Anmeldung im Browser (einmalig)")
+        sign_in = QPushButton("Sign in", objectName="primary")
+        sign_in.setToolTip("Opens the Microsoft sign-in in the browser (once)")
         sign_in.clicked.connect(self._calendar_sign_in)
-        sign_out = QPushButton("Abmelden")
+        sign_out = QPushButton("Sign out")
         sign_out.clicked.connect(self.engine.calendar_sign_out)
         row.addWidget(sign_in)
         row.addWidget(sign_out)
         row.addStretch(1)
         graph_form.addRow("", row)
-        graph_hint = QLabel("Braucht eine App-Registrierung in eurem Microsoft-Verzeichnis (Anleitung im README).",
+        graph_hint = QLabel("Needs an app registration in your organisation's Microsoft directory (see the README).",
                             objectName="hint")
         graph_hint.setWordWrap(True)
         graph_form.addRow(graph_hint)
@@ -730,23 +730,23 @@ class MainWindow(QMainWindow):
         self.cal_next = QLabel("–")
         self.cal_next.setStyleSheet("font-weight:bold")
         self.cal_next.setWordWrap(True)
-        form.addRow("Nächstes Meeting", self.cal_next)
+        form.addRow("Next meeting", self.cal_next)
         remind = QSpinBox()
         remind.setRange(0, 60)
-        remind.setSuffix(" Min vorher")
-        remind.setSpecialValueText("aus")
+        remind.setSuffix(" min before")
+        remind.setSpecialValueText("off")
         remind.setValue(int(cal.get("remind_minutes", 5)))
         remind.valueChanged.connect(lambda v: self._set_sub("calendar", "remind_minutes", v))
-        form.addRow("Erinnerung", remind)
-        hint = QLabel("Die Erinnerung zeigt kurz vor dem Meeting einen Countdown („in 4 Min“) und hat Vorrang "
-                      "vor Statuslicht und Rotation. Die Seite „Nächstes Meeting“ fügst du unter Seiten hinzu.",
+        form.addRow("Reminder", remind)
+        hint = QLabel("Shortly before a meeting the reminder shows a countdown (in 4 min); it takes priority over "
+                      "the status light and the rotation. Add the Next meeting page under Pages.",
                       objectName="hint")
         hint.setWordWrap(True)
         form.addRow(hint)
         return box
 
     def _calendar_sign_in(self) -> None:
-        self.cal_status.setText("Anmeldung im Browser läuft …")
+        self.cal_status.setText("Sign-in running in the browser …")
         fut = self.engine.calendar_sign_in()
 
         def done() -> None:
@@ -754,9 +754,9 @@ class MainWindow(QMainWindow):
                 QTimer.singleShot(300, done)
                 return
             try:
-                self.cal_status.setText(f"Angemeldet als {fut.result()}")
+                self.cal_status.setText(f"Signed in as {fut.result()}")
             except Exception as err:  # noqa: BLE001 - shown to the user
-                self.cal_status.setText(f"Anmeldung fehlgeschlagen: {err}")
+                self.cal_status.setText(f"Sign-in failed: {err}")
 
         QTimer.singleShot(300, done)
 
@@ -772,13 +772,13 @@ class MainWindow(QMainWindow):
         lay = QVBoxLayout(w)
         lay.addWidget(self._build_panel_settings())
         night = self.cfg["night"]
-        box = QGroupBox("Nachtmodus")
+        box = QGroupBox("Night mode")
         form = QFormLayout(box)
-        en = QCheckBox("Nachts dunkler")
+        en = QCheckBox("Dimmer at night")
         en.setChecked(night.get("enabled", False))
         en.toggled.connect(lambda v: self._set_sub("night", "enabled", v))
         form.addRow("", en)
-        for key, label in (("start", "Von"), ("end", "Bis")):
+        for key, label in (("start", "From"), ("end", "To")):
             te = QTimeEdit(QTime.fromString(night.get(key, "22:00"), "HH:mm"))
             te.setDisplayFormat("HH:mm")
             te.timeChanged.connect(lambda t, k=key: self._set_sub("night", k, t.toString("HH:mm")))
@@ -788,35 +788,35 @@ class MainWindow(QMainWindow):
         nb.setSuffix(" %")
         nb.setValue(int(night.get("brightness", 5)))
         nb.valueChanged.connect(lambda v: self._set_sub("night", "brightness", v))
-        form.addRow("Helligkeit nachts", nb)
+        form.addRow("Night brightness", nb)
         lay.addWidget(box)
 
-        box = QGroupBox("Wetter")
+        box = QGroupBox("Weather")
         form = QFormLayout(box)
         row = QHBoxLayout()
         self.city = QLineEdit(self.cfg["weather"].get("city", ""))
-        self.city.setPlaceholderText("z. B. Köln")
+        self.city.setPlaceholderText("e.g. Cologne")
         self.city.returnPressed.connect(self._find_city)
-        find = QPushButton("Ort übernehmen")
+        find = QPushButton("Set location")
         find.clicked.connect(self._find_city)
         row.addWidget(self.city, 1)
         row.addWidget(find)
-        form.addRow("Ort", row)
+        form.addRow("Location", row)
         self.weather_now = QLabel("–")
-        form.addRow("Aktuell", self.weather_now)
+        form.addRow("Now", self.weather_now)
         lay.addWidget(box)
 
-        box = QGroupBox("Programm")
+        box = QGroupBox("App")
         form = QFormLayout(box)
-        auto = QCheckBox("Mit Windows starten")
+        auto = QCheckBox("Start with Windows")
         auto.setChecked(autostart.is_enabled())
         auto.toggled.connect(self._set_autostart)
         form.addRow("", auto)
-        mini = QCheckBox("Minimiert starten (nur Symbol in der Taskleiste)")
+        mini = QCheckBox("Start minimised (tray icon only)")
         mini.setChecked(self.cfg.get("start_minimized", False))
         mini.toggled.connect(lambda v: self._set_cfg("start_minimized", v))
         form.addRow("", mini)
-        path = QLabel(f"Einstellungen: {config.CONFIG_FILE}")
+        path = QLabel(f"Settings file: {config.CONFIG_FILE}")
         path.setObjectName("hint")
         path.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         form.addRow(path)
@@ -833,10 +833,10 @@ class MainWindow(QMainWindow):
         try:
             hit = sources.geocode(name)
         except OSError as err:
-            QMessageBox.warning(self, "Wetter", f"Ortssuche nicht erreichbar:\n{err}")
+            QMessageBox.warning(self, "Weather", f"Location search not reachable:\n{err}")
             return
         if not hit:
-            QMessageBox.information(self, "Wetter", f"„{name}“ nicht gefunden.")
+            QMessageBox.information(self, "Weather", f"\"{name}\" not found.")
             return
         label, lat, lon = hit
         self.city.setText(label)
@@ -872,7 +872,7 @@ class MainWindow(QMainWindow):
     # --- connection ------------------------------------------------------------------------------
 
     def _scan(self) -> None:
-        self.scan_info.setText("Suche Panels …")
+        self.scan_info.setText("Searching for panels …")
         fut = self.engine.scan()
 
         def done() -> None:
@@ -882,13 +882,13 @@ class MainWindow(QMainWindow):
             try:
                 panels = fut.result()
             except Exception as err:  # noqa: BLE001
-                self.scan_info.setText(f"Suche fehlgeschlagen: {err}")
+                self.scan_info.setText(f"Search failed: {err}")
                 return
             self.devices.clear()
             for address, name, rssi in panels:
                 self.devices.addItem(f"{name} ({address}, {rssi} dBm)", (address, name))
-            self.scan_info.setText(f"{len(panels)} Panel(s) gefunden" if panels else
-                                   "Kein Panel gefunden. Ist es eingeschaltet und die Handy-App geschlossen?")
+            self.scan_info.setText(f"{len(panels)} panel(s) found" if panels else
+                                   "No panel found. Is it switched on and the phone app closed?")
             if len(panels) == 1:
                 self._connect_selected()
 
@@ -910,11 +910,11 @@ class MainWindow(QMainWindow):
         self.conn_label.setText(f"●  {st.connection}")
         self.conn_label.setProperty("ok", st.connected)
         self.conn_label.style().polish(self.conn_label)
-        self.showing.setText(f"Auf dem Panel: {st.showing}" if st.showing else "")
+        self.showing.setText(f"On the panel: {st.showing}" if st.showing else "")
         self.error_label.setVisible(bool(st.error))
         self.error_label.setText(st.error or "")
         label, color = sources.teams_label(st.teams)
-        self.teams_now.setText(label if st.teams else "noch kein Status im Teams-Log gefunden")
+        self.teams_now.setText(label if st.teams else "no status found in the Teams log yet")
         self.teams_now.setStyleSheet(f"font-weight:bold; color:rgb{color}")
         c = st.claude
         if c is None:
@@ -923,11 +923,11 @@ class MainWindow(QMainWindow):
             self.claude_now.setText(c.error)
         else:
             def fmt(pct, reset):
-                days = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
-                when = f", wird zurückgesetzt {days[reset.weekday()]} {reset:%H:%M}" if reset else ""
+                days = pages.WEEKDAYS
+                when = f", resets {days[reset.weekday()]} {reset:%H:%M}" if reset else ""
                 return f"{pct:.0f} %{when}" if pct is not None else "?"
-            self.claude_now.setText(f"Sitzung: {fmt(c.session, c.session_reset)}\n"
-                                    f"Woche: {fmt(c.week, c.week_reset)}" + (f"\nAbo: {c.plan}" if c.plan else ""))
+            self.claude_now.setText(f"Session: {fmt(c.session, c.session_reset)}\n"
+                                    f"Week: {fmt(c.week, c.week_reset)}" + (f"\nPlan: {c.plan}" if c.plan else ""))
         if st.calendar:
             self.cal_status.setText(st.calendar)
         m = st.meeting
@@ -935,12 +935,12 @@ class MainWindow(QMainWindow):
             self.cal_next.setText("–")
         else:
             start, end = m.start.astimezone(), m.end.astimezone()
-            days = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+            days = pages.WEEKDAYS
             self.cal_next.setText(f"{days[start.weekday()]} {start:%H:%M}–{end:%H:%M}  {m.subject}"
                                   + (f"  ({m.location})" if m.location else ""))
         wx = st.weather
         if wx:
-            self.weather_now.setText(f"{wx.temperature:.0f} °C ({wx.icon}), heute {wx.low:.0f}–{wx.high:.0f} °C")
+            self.weather_now.setText(f"{wx.temperature:.0f} °C ({wx.icon}), today {wx.low:.0f}–{wx.high:.0f} °C")
         tip = f"Pixel Panel – {st.connection}"
         if st.teams:
             tip += f"\nTeams: {label}"
@@ -952,7 +952,7 @@ class MainWindow(QMainWindow):
             self._movie = None
         if mime == "native":
             self.preview.setPixmap(QPixmap())
-            self.preview.setText(f"<span style='color:#aaa'>{label} – läuft im Panel (keine Vorschau)</span>")
+            self.preview.setText(f"<span style='color:#aaa'>{label} – runs on the panel (no preview)</span>")
             return
         img = QImage.fromData(data)
         if img.isNull():
@@ -978,22 +978,22 @@ class MainWindow(QMainWindow):
     def _build_tray(self) -> None:
         self.tray = QSystemTrayIcon(app_icon(), self)
         menu = QMenu()
-        menu.addAction("Öffnen", self.show_window)
-        menu.addAction("Nächste Seite", self.engine.next_page)
-        menu.addAction("Zurück zur Rotation", self.engine.clear_message)
+        menu.addAction("Open", self.show_window)
+        menu.addAction("Next page", self.engine.next_page)
+        menu.addAction("Back to rotation", self.engine.clear_message)
         menu.addSeparator()
-        self.tray_power = QAction("Panel an", menu, checkable=True)
+        self.tray_power = QAction("Panel on", menu, checkable=True)
         self.tray_power.setChecked(self.cfg.get("power", True))
         self.tray_power.toggled.connect(self.power.setChecked)
         self.power.toggled.connect(self.tray_power.setChecked)
         menu.addAction(self.tray_power)
-        tray_light = QAction("Teams-Statuslicht", menu, checkable=True)
+        tray_light = QAction("Teams status light", menu, checkable=True)
         tray_light.setChecked(self.cfg["teams"].get("status_light", True))
         tray_light.toggled.connect(self.light_cb.setChecked)
         self.light_cb.toggled.connect(tray_light.setChecked)
         menu.addAction(tray_light)
         menu.addSeparator()
-        menu.addAction("Beenden", self.quit)
+        menu.addAction("Quit", self.quit)
         self.tray.setContextMenu(menu)
         self.tray.activated.connect(
             lambda reason: self.show_window() if reason == QSystemTrayIcon.ActivationReason.Trigger else None)
@@ -1013,8 +1013,8 @@ class MainWindow(QMainWindow):
         event.ignore()
         self.hide()
         if not self._tray_hint_shown:
-            self.tray.showMessage("Pixel Panel läuft weiter",
-                                  "Das Panel wird weiter gesteuert. Beenden über das Symbol in der Taskleiste.",
+            self.tray.showMessage("Pixel Panel keeps running",
+                                  "The panel is still controlled. Quit from the tray icon.",
                                   QSystemTrayIcon.MessageIcon.Information, 4000)
             self._tray_hint_shown = True
 
@@ -1038,7 +1038,7 @@ def run(start_hidden: bool = False) -> int:
     config.APP_DIR.mkdir(parents=True, exist_ok=True)
     lock = QLockFile(str(config.APP_DIR / "pixelpanel.lock"))
     if not lock.tryLock(100):
-        QMessageBox.information(None, "Pixel Panel", "Pixel Panel läuft bereits (Symbol in der Taskleiste).")
+        QMessageBox.information(None, "Pixel Panel", "Pixel Panel is already running (tray icon).")
         return 0
 
     cfg = config.load()

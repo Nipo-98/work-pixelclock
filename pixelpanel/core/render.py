@@ -336,7 +336,7 @@ def render_clock(now: datetime, width: int, height: int, color: RGB = WHITE,
     return _clock_frames(now, width, height, effect, blink, seconds, draw)
 
 
-WEEKDAYS_SHORT = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+WEEKDAYS_SHORT = ("Mo", "Tu", "We", "Th", "Fr", "Sa", "Su")  # portrait clock: two letters fit 16 px
 
 
 def _render_clock_tall(now: datetime, width: int, height: int, color: RGB, blink: bool,

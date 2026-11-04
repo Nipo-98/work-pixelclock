@@ -22,7 +22,13 @@ from .core.render import Line, Rendered, Screen
 
 log = logging.getLogger(__name__)
 
-WEEKDAYS = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+WEEKDAYS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def date_lines(now: datetime) -> list[str]:
+    """Weekday and day + month on two lines, e.g. Wed / 30 Sep (one line does not fit next to an icon)."""
+    return [WEEKDAYS[now.weekday()], f"{now.day} {MONTHS[now.month - 1]}"]
 EMOJI_FONT = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts" / "seguiemj.ttf"
 MAX_GIF_FRAMES = 200
 
@@ -91,7 +97,7 @@ def clawd_icon() -> Image.Image:
 
 
 CUSTOM_ICONS = {"claude": claude_icon, "clawd": clawd_icon}
-CLAUDE_LOGOS = {"claude": "Claude-Logo", "clawd": "Clawd (Maskottchen)"}
+CLAUDE_LOGOS = {"claude": "Claude logo", "clawd": "Clawd (mascot)"}
 
 
 def dot_icon(color: tuple[int, int, int], size: int = 16) -> Image.Image:
@@ -231,7 +237,7 @@ def claude_screen(usage: sources.ClaudeUsage | None, show: str, logo: str = "cla
         return Screen([Line(pct(usage.week), usage_color(usage.week))], icon=icon,
                       progress=usage.week or 0, progress_color=usage_color(usage.week))
     return Screen([Line(f"5h {pct(usage.session)}", usage_color(usage.session)),
-                   Line(f"Wo {pct(usage.week)}", usage_color(usage.week))], icon=icon)
+                   Line(f"Wk {pct(usage.week)}", usage_color(usage.week))], icon=icon)
 
 
 LED_UNLIT = (44, 50, 66)
@@ -276,14 +282,14 @@ def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool) -> Scr
     """Two lines: when (time, countdown or 'bis HH:MM') and the subject (scrolls when long)."""
     icon = icons.builtin_icon("calendar")
     if meeting is None:
-        return Screen([Line("Keine", sources.GREY), Line("Termine", sources.GREY)], icon=icon)
+        return Screen([Line("No", sources.GREY), Line("meetings", sources.GREY)], icon=icon)
     start, end = meeting.start.astimezone(), meeting.end.astimezone()
     now = now.astimezone()
     if meeting.running(now):
-        when, color = f"bis {end:%H:%M}", (230, 20, 20)
+        when, color = f"till {end:%H:%M}", (230, 20, 20)
     elif remind:
         mins = max(0, -(-int((start - now).total_seconds()) // 60))
-        when, color = ("jetzt" if mins == 0 else f"in {mins} Min"), (255, 110, 0)
+        when, color = ("now" if mins == 0 else f"in {mins} min"), (255, 110, 0)
     elif start.date() == now.date():
         when, color = f"{start:%H:%M}", CAL_COLOR
     else:
@@ -317,13 +323,13 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
     t = page["type"]
     if t == "native_clock":
         return Native(proto.set_clock_mode(int(page.get("style", 1)), now, bool(page.get("show_date", True))),
-                      f"Eingebaute Uhr {page.get('style', 1)}")
+                      f"Built-in clock {page.get('style', 1)}")
     if t == "clock":
         return render.render_clock(now, w, h, _color(page), blink=True, weekday_bar=page.get("weekday_bar", True),
                                    effect=page.get("effect", "none"), seconds=page.get("seconds", False))
     if t == "date":
-        screen = Screen([Line(f"{WEEKDAYS[now.weekday()]} {now:%d.%m.}", _color(page))],
-                        icon=load_icon(page.get("icon")), effect=page.get("effect", "none"), big=False)
+        screen = Screen([Line(text, _color(page)) for text in date_lines(now)],
+                        icon=load_icon(page.get("icon")), effect=page.get("effect", "none"))
     elif t == "text":
         screen = text_screen(page)
     elif t == "image":
@@ -333,11 +339,11 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
                 return render_image_file(path, w, h)
             except OSError as err:
                 log.warning("image %s: %s", path, err)
-        screen = Screen([Line("Kein Bild", (110, 110, 120))], big=False)
+        screen = Screen([Line("No image", (110, 110, 120))], big=False)
     elif t == "weather":
         wx = ctx.weather
         if wx is None:
-            screen = Screen([Line("Wetter ...", (110, 110, 120))], icon=icons.builtin_icon("cloud"), big=False)
+            screen = Screen([Line("Weather...", (110, 110, 120))], icon=icons.builtin_icon("cloud"), big=False)
         else:
             lines = [Line(f"{wx.temperature:.0f}°", _color(page))]
             if wx.low is not None and wx.high is not None and h >= 16:

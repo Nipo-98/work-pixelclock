@@ -71,9 +71,9 @@ def test_calendar_page_shows_time_and_countdown():
     assert far.lines[0].text == (NOW + timedelta(minutes=120)).astimezone().strftime("%H:%M")
     assert far.lines[1].text == "Daily"
     soon = pages.calendar_screen(_mt(4), local_now, remind=True)
-    assert soon.lines[0].text == "in 4 Min"
+    assert soon.lines[0].text == "in 4 min"
     running = pages.calendar_screen(_mt(-5), local_now, remind=False)
-    assert running.lines[0].text.startswith("bis ")
+    assert running.lines[0].text.startswith("till ")
     none = pages.calendar_screen(None, local_now, remind=False)
-    assert "Keine" in none.lines[0].text
+    assert [line.text for line in none.lines] == ["No", "meetings"]
     assert pages.render_page(page, pages.Context(meeting=_mt(30)), 64, 16, local_now).frames

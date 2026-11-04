@@ -15,15 +15,15 @@ from .core.render import Rendered
 HOLD_MS = 5000
 
 TRANSITIONS: dict[str, str] = {
-    "none": "Sofort (springen)",
-    "push_left": "Schieben nach links",
-    "push_up": "Schieben nach oben",
-    "shoot": "Einschießen",
-    "fade": "Überblenden",
-    "wipe": "Wischen",
-    "dissolve": "Auflösen",
+    "none": "Instant (jump)",
+    "push_left": "Push left",
+    "push_up": "Push up",
+    "shoot": "Shoot in",
+    "fade": "Fade",
+    "wipe": "Wipe",
+    "dissolve": "Dissolve",
     "nyan": "Nyan Cat",
-    "random": "Zufällig",
+    "random": "Random",
 }
 
 RGB = tuple[int, int, int]

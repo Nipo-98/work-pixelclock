@@ -24,15 +24,15 @@ PRESENCE_RE = re.compile(r"UserPresenceAction: \{[^}]*availability: (\w+)")
 
 # state -> (label, short label that fits next to an icon on 64 px, colour)
 TEAMS_STATES: dict[str, tuple[str, str, tuple[int, int, int]]] = {
-    "Available": ("Verfügbar", "Frei", (0, 200, 60)),
-    "Busy": ("Beschäftigt", "Besetzt", (230, 20, 20)),
-    "InACall": ("Im Anruf", "Im Call", (230, 20, 20)),
-    "InAMeeting": ("Im Meeting", "Meeting", (230, 20, 20)),
-    "OnThePhone": ("Am Telefon", "Telefon", (230, 20, 20)),
-    "Presenting": ("Präsentiert", "Präsent.", (230, 20, 20)),
-    "DoNotDisturb": ("Nicht stören", "Ruhe", (200, 0, 0)),
-    "BeRightBack": ("Gleich da", "Gleich da", (255, 190, 0)),
-    "Away": ("Abwesend", "Abwesend", (255, 190, 0)),
+    "Available": ("Available", "Free", (0, 200, 60)),
+    "Busy": ("Busy", "Busy", (230, 20, 20)),
+    "InACall": ("In a call", "In call", (230, 20, 20)),
+    "InAMeeting": ("In a meeting", "Meeting", (230, 20, 20)),
+    "OnThePhone": ("On the phone", "Phone", (230, 20, 20)),
+    "Presenting": ("Presenting", "Present.", (230, 20, 20)),
+    "DoNotDisturb": ("Don't disturb", "DND", (200, 0, 0)),
+    "BeRightBack": ("Back soon", "BRB", (255, 190, 0)),
+    "Away": ("Away", "Away", (255, 190, 0)),
     "Offline": ("Offline", "Offline", (110, 110, 120)),
 }
 GREY = (110, 110, 120)
@@ -145,7 +145,7 @@ def fetch_claude_usage(credentials: Path = CLAUDE_CREDENTIALS) -> ClaudeUsage:
     try:
         oauth = json.loads(credentials.read_text(encoding="utf-8"))["claudeAiOauth"]
     except (OSError, ValueError, KeyError):
-        return ClaudeUsage(error="Nicht in Claude Code angemeldet")
+        return ClaudeUsage(error="Not signed in to Claude Code")
     request = urllib.request.Request(CLAUDE_USAGE_URL, headers={
         "Authorization": f"Bearer {oauth.get('accessToken', '')}",
         "anthropic-beta": "oauth-2025-04-20",
@@ -156,10 +156,10 @@ def fetch_claude_usage(credentials: Path = CLAUDE_CREDENTIALS) -> ClaudeUsage:
             return parse_claude_usage(json.load(resp), oauth.get("subscriptionType"))
     except urllib.error.HTTPError as err:
         if err.code == 401:
-            return ClaudeUsage(error="Anmeldung abgelaufen – Claude Code kurz öffnen")
+            return ClaudeUsage(error="Sign-in expired – open Claude Code once")
         return ClaudeUsage(error=f"HTTP {err.code}")
     except (OSError, ValueError) as err:
-        return ClaudeUsage(error=f"Keine Verbindung ({err.__class__.__name__})")
+        return ClaudeUsage(error=f"No connection ({err.__class__.__name__})")
 
 
 # --- Weather (Open-Meteo, no key) ----------------------------------------------------------------

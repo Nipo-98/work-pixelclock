@@ -56,7 +56,7 @@ def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
             continue
         if end <= now:
             continue
-        subject = (e.get("subject") or "Termin").strip()
+        subject = (e.get("subject") or "Meeting").strip()
         found.append(Meeting(subject, start, end, ((e.get("location") or {}).get("displayName") or "").strip()))
     return min(found, key=lambda m: m.start) if found else None
 
@@ -89,7 +89,7 @@ class Calendar:
         """Opens the browser for the Microsoft sign-in; returns the account name."""
         result = self.app.acquire_token_interactive(SCOPES, prompt="select_account")
         if "access_token" not in result:
-            raise RuntimeError(result.get("error_description") or result.get("error") or "Anmeldung fehlgeschlagen")
+            raise RuntimeError(result.get("error_description") or result.get("error") or "Sign-in failed")
         return self.account() or "angemeldet"
 
     def sign_out(self) -> None:
@@ -99,7 +99,7 @@ class Calendar:
     def fetch(self, now: datetime | None = None) -> Meeting | None:
         token = self._token()
         if token is None:
-            raise PermissionError("Nicht angemeldet")
+            raise PermissionError("Not signed in")
         now = now or datetime.now(timezone.utc)
         q = urllib.parse.urlencode({
             "startDateTime": (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"),
