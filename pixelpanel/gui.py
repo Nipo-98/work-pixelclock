@@ -239,8 +239,14 @@ class PageEditor(QWidget):
             for key, label in pages.CLAUDE_LOGOS.items():
                 logo.addItem(QIcon(pil_to_pixmap(pages.CUSTOM_ICONS[key]().resize((32, 32 * pages.CUSTOM_ICONS[key]().height // 16), Image.Resampling.NEAREST))), label, key)
             logo.setCurrentIndex(max(0, logo.findData(page.get("logo", "claude"))))
-            logo.currentIndexChanged.connect(lambda _: self._set("logo", logo.currentData()))
             self.form.addRow("Icon", logo)
+            animate = QCheckBox("Animate Clawd (waves, hops, sits down, blinks)")
+            animate.setChecked(bool(page.get("animate", True)))
+            animate.toggled.connect(lambda v: self._set("animate", v))
+            animate.setVisible(logo.currentData() == "clawd")
+            logo.currentIndexChanged.connect(
+                lambda _: (self._set("logo", logo.currentData()), animate.setVisible(logo.currentData() == "clawd")))
+            self.form.addRow("", animate)
 
     def _browse_image(self, field: QLineEdit) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose an image", "", "Images (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")

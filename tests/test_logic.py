@@ -66,6 +66,32 @@ def test_clawd_icon_has_eyes_and_legs():
     assert img.getpixel((3, 8))[3] == 255 and img.getpixel((4, 8))[3] == 0  # separate legs
 
 
+def test_clawd_animation_has_wave_sit_hop_and_blink():
+    frames = pages.clawd_frames()
+    names = [name for name, _, _ in frames]
+    for move in ("blink", "wave", "hop", "sit", "look"):
+        assert any(n.startswith(move) for n in names), move
+    assert all(img.size == (16, 16) for _, img, _ in frames)
+    assert all(ms >= 60 for _, _, ms in frames)
+    assert 4000 <= sum(ms for _, _, ms in frames) <= 12000  # one loop: a few seconds
+    imgs = {n: img for n, img, _ in frames}
+    assert imgs["wave_up"].tobytes() != imgs["idle"].tobytes()
+    assert imgs["hop_top"].getbbox()[1] < imgs["idle"].getbbox()[1]  # in the air: higher
+    assert imgs["sit"].getbbox()[3] == imgs["idle"].getbbox()[3]      # sitting: same ground
+    assert imgs["sit"].getbbox()[1] > imgs["idle"].getbbox()[1]       # ... but lower body
+
+
+def test_claude_page_animates_clawd_unless_switched_off():
+    ctx = pages.Context(claude=sources.ClaudeUsage(session=50, week=40))
+    now = datetime(2026, 11, 3, 14, 5)
+    animated = pages.render_page({**config.new_page("claude"), "logo": "clawd"}, ctx, 64, 16, now)
+    assert animated.animated and len(animated.frames) == len(pages.clawd_frames())
+    still = pages.render_page({**config.new_page("claude"), "logo": "clawd", "animate": False}, ctx, 64, 16, now)
+    assert not still.animated
+    logo = pages.render_page({**config.new_page("claude"), "logo": "claude"}, ctx, 64, 16, now)
+    assert not logo.animated
+
+
 def test_claude_page_logo_choice():
     ctx = pages.Context(claude=sources.ClaudeUsage(session=50, week=40))
     for logo in ("claude", "clawd"):

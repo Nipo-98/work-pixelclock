@@ -96,6 +96,72 @@ def clawd_icon() -> Image.Image:
     return img
 
 
+# Clawd at full resolution (16 x 10, every terminal row doubled) for the animation
+_CLAWD_FULL = [row for row in _CLAWD for _ in (0, 1)]
+CLAWD_GROUND = 14  # row below Clawd's feet on the 16 x 16 icon canvas
+
+
+def _clawd_pose(eyes: str = "open", arm: str | None = None, dy: int = 0, sit: bool = False) -> Image.Image:
+    """One frame of Clawd on a 16 x 16 canvas.
+
+    eyes: open | closed | left | right; arm: None | out | in (right arm raised, hand tipping); dy: lift (hop);
+    sit: legs folded away and the body lowered onto the ground."""
+    rows = [list(r) for r in _CLAWD_FULL]
+    for y in (2, 3):  # eye holes at x 4 and 11
+        for x in (4, 11):
+            rows[y][x] = "X"
+    if eyes != "closed":
+        shift = {"left": -1, "right": 1}.get(eyes, 0)
+        for y in (2, 3):
+            for x in (4 + shift, 11 + shift):
+                rows[y][x] = "."
+    else:
+        for x in (4, 11):
+            rows[3][x] = "."  # a thin slit: closed eye
+    if arm:
+        for y in (4, 5):  # the right arm leaves its resting place
+            rows[y][14] = rows[y][15] = "."
+    if sit:
+        rows = rows[:8]  # no legs
+    top = CLAWD_GROUND - len(rows) - dy
+    img = Image.new("RGBA", (16, 16), (0, 0, 0, 0))
+
+    def put(x: int, y: int) -> None:
+        if 0 <= x < 16 and 0 <= y < 16:
+            img.putpixel((x, y), CLAUDE_ORANGE + (255,))
+
+    for y, row in enumerate(rows):
+        for x, c in enumerate(row):
+            if c == "X":
+                put(x, top + y)
+    if arm:
+        # arm from the shoulder up past the head; the hand tips inwards ("in") or outwards ("out")
+        for y in range(top - 1, top + 4):
+            put(14, y)
+            put(15, y)
+        hand_x = (13, 14) if arm == "in" else (14, 15)  # "in" still touches the arm at x 14
+        for x in hand_x:
+            put(x, top - 3)
+            put(x, top - 2)
+    return img
+
+
+def clawd_frames() -> list[tuple[str, Image.Image, int]]:
+    """Clawd's loop (~8 s): blink, look around, wave, hop, sit down and get up. (name, picture, ms)"""
+    seq = [
+        ("idle", {}, 1400), ("blink", {"eyes": "closed"}, 140), ("idle", {}, 900),
+        ("look_left", {"eyes": "left"}, 600), ("look_right", {"eyes": "right"}, 600), ("idle", {}, 400),
+        ("wave_up", {"arm": "out"}, 220), ("wave_in", {"arm": "in"}, 220),
+        ("wave_up", {"arm": "out"}, 220), ("wave_in", {"arm": "in"}, 220),
+        ("wave_up", {"arm": "out"}, 220), ("idle", {}, 600),
+        ("hop_crouch", {"sit": True}, 120), ("hop_up", {"dy": 2}, 120), ("hop_top", {"dy": 3}, 160),
+        ("hop_up", {"dy": 2}, 120), ("idle", {}, 700),
+        ("sit", {"sit": True}, 1600), ("blink_sit", {"sit": True, "eyes": "closed"}, 140),
+        ("sit", {"sit": True}, 600), ("idle", {}, 200),
+    ]
+    return [(name, _clawd_pose(**kw), ms) for name, kw, ms in seq]
+
+
 CUSTOM_ICONS = {"claude": claude_icon, "clawd": clawd_icon}
 CLAUDE_LOGOS = {"claude": "Claude logo", "clawd": "Clawd (mascot)"}
 
@@ -258,7 +324,7 @@ def _dot_mask(w: int, h: int, cell: int) -> Image.Image:
 
 def led_preview(rendered: Rendered, cell: int = 8) -> tuple[bytes, str]:
     """Preview that looks like the panel: round LEDs, unlit ones faintly visible."""
-    if rendered.animated and len(rendered.frames) > 2:  # half the frames, twice as long: lighter GIF
+    if len(rendered.frames) > 60:  # long scrolls: half the frames, twice as long (short loops keep every frame)
         rendered = Rendered(rendered.frames[::2], [d * 2 for d in rendered.durations[::2]])
     w, h = rendered.frames[0].size
     dots = _dot_mask(w, h, cell)
@@ -319,6 +385,18 @@ def text_screen(page: dict) -> Screen:
                   effect=page.get("effect", "none"))
 
 
+def animate_icon(screen: Screen, w: int, h: int) -> Rendered:
+    """The page once per Clawd pose. Pages that scroll anyway keep a still Clawd (one loop only)."""
+    still = render.render_screen(screen, w, h)
+    if still.animated:
+        return still
+    frames, durations = [], []
+    for _name, pose, ms in clawd_frames():
+        frames.append(render.render_screen(Screen(**{**screen.__dict__, "icon": pose}), w, h).frames[0])
+        durations.append(ms)
+    return Rendered(frames, durations)
+
+
 def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rendered | Native:
     t = page["type"]
     if t == "native_clock":
@@ -353,6 +431,8 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
         screen = teams_screen(ctx.teams, light=False)
     elif t == "claude":
         screen = claude_screen(ctx.claude, page.get("show", "both"), page.get("logo", "claude"))
+        if page.get("logo") == "clawd" and page.get("animate", True):
+            return animate_icon(screen, w, h)
     elif t == "calendar":
         screen = calendar_screen(ctx.meeting, now, remind=bool(page.get("remind")))
     else:

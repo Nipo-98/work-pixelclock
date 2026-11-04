@@ -197,9 +197,9 @@ The window's **X** only closes the window – the panel keeps being controlled. 
   changed or passed on.
 - If the sign-in has expired, the panel says so – opening Claude Code once is enough.
 - Colours: green < 50 %, yellow < 80 %, red from 80 %.
-- Icon: Claude logo or **Clawd**, the mascot from Claude Code.
+- Icon: Claude logo or **Clawd**, the mascot from Claude Code. Clawd is animated: he blinks, looks around, waves, hops and sits down (an ~8 s loop that runs on the panel itself; switch it off with *Animate Clawd*).
 
-  ![Clawd](docs/images/clawd.png)
+  ![Clawd waving, hopping and sitting down](docs/images/clawd.gif)
 
 ---
 

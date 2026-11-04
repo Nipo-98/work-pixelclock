@@ -35,7 +35,7 @@ PAGE_DEFAULTS: dict[str, dict] = {
     "image": {"path": ""},
     "weather": {"color": "#ffffff", "effect": "none"},
     "teams": {},
-    "claude": {"show": "both", "logo": "claude"},
+    "claude": {"show": "both", "logo": "claude", "animate": True},
     "calendar": {},
 }
 
