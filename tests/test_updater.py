@@ -12,6 +12,8 @@ def test_versions_compare_numerically():
     assert updater.parse_version("1.3.0") > updater.parse_version("v1.2.99")
     assert updater.parse_version("v1.2.7") == (1, 2, 7)
     assert updater.parse_version("nonsense") == (0,)
+    assert updater.parse_version("v1.4.0.1") > updater.parse_version("1.4.0.0")
+    assert updater.parse_version("v1.4.0.0") > updater.parse_version("1.3.0")
 
 
 def _api(tag, data=b"new exe", digest=True, name="PixelPanel.exe"):
