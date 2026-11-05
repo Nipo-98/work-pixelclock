@@ -21,6 +21,7 @@ log = logging.getLogger(__name__)
 PORT = 47813
 URL_BASE = f"http://127.0.0.1:{PORT}/pixelpanel"
 SETTINGS_FILE = Path.home() / ".claude" / "settings.json"
+SESSION_EXPIRE = 12 * 3600.0  # no event for that long: the session is gone
 EXPIRE_AFTER = 3600.0  # a session that vanished without saying so does not alarm forever
 MAX_BODY = 4 * 1024 * 1024
 KEEP_FIELDS = ("hook_event_name", "session_id", "cwd", "notification_type")
@@ -32,6 +33,7 @@ URGENCY = {"error": 3, "input": 2, "idle": 1}
 # event -> matcher; events without a matcher are the ones that end an alert
 HOOK_EVENTS: dict[str, str | None] = {
     "Notification": NOTIFICATION_MATCHER,
+    "SessionStart": None,
     "StopFailure": None,
     "UserPromptSubmit": None,
     "PostToolUse": None,
@@ -69,10 +71,15 @@ class Tracker:
 
     def __init__(self) -> None:
         self.pending: dict[str, _Alert] = {}
+        self.active: dict[str, float] = {}  # session -> time of its last event
 
     def apply(self, event: dict, now: float, kinds: set[str]) -> bool:
         """Update from one hook event; True when it raised a new alert."""
         name, session = event.get("hook_event_name"), event.get("session_id") or "?"
+        if name == "SessionEnd":
+            self.active.pop(session, None)
+        else:
+            self.active[session] = now
         kind = None
         if name == "Notification":
             ntype = event.get("notification_type")
@@ -94,7 +101,14 @@ class Tracker:
         stale = [s for s, a in self.pending.items() if now - a.since > EXPIRE_AFTER]
         for session in stale:
             del self.pending[session]
-        return bool(stale)
+        gone = [s for s, last in self.active.items() if now - last > SESSION_EXPIRE]
+        for session in gone:
+            del self.active[session]
+        return bool(stale or gone)
+
+    def sessions(self) -> tuple[int, int]:
+        """(sessions known to be open, of which waiting for you)."""
+        return len(self.active), len(self.pending)
 
     def summary(self) -> Summary | None:
         if not self.pending:

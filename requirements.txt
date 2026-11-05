@@ -6,5 +6,6 @@ msal-extensions
 pywin32
 icalendar
 recurring-ical-events
+psutil
 pyinstaller
 pytest

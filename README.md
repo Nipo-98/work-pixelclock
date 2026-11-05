@@ -20,6 +20,7 @@ a single `PixelPanel.exe`, no installation needed.
 - [Using the app](#using-the-app)
 - [Teams status](#teams-status)
 - [Claude usage](#claude-usage)
+- [Work features](#work-features)
 - [Claude session alerts](#claude-session-alerts)
 - [Calendar (next meeting)](#calendar-next-meeting)
 - [Weather](#weather)
@@ -41,6 +42,9 @@ a single `PixelPanel.exe`, no installation needed.
 | **Transitions** | Page changes jump, push, shoot in, fade, wipe, dissolve – or arrive with **Nyan Cat** |
 | **Teams status** | A stripe in the Teams colour on both sides of every page; for "Busy", "In a call", "Don't disturb" … the whole panel lights up in the status colour – automatically, no sign-in |
 | **Claude usage** | Percent of the 5-hour session and of the weekly limit of your Claude plan, coloured green/yellow/red, with the Claude logo or **Clawd** |
+| **Work** | On air light, focus timer, stopwatch, countdowns, door sign, break and limit reminders, unread mail and Teams, day overview |
+| **Connections** | GitHub builds, issues and reviews, service monitor, team message, local interface for your own scripts |
+| **Organise** | Profiles (also by time of day), a schedule per page, global keyboard shortcuts |
 | **Claude session alerts** | Optional: Clawd pulls an alert onto the panel when a Claude Code session needs you |
 | **Calendar** | Next meeting from Outlook (no sign-in), a calendar link or Microsoft 365, with a countdown reminder shortly before it starts |
 | **Emojis** | Real colour emojis (Windows emoji font) at 16 × 16 pixels, ~50 built-in pixel icons, thousands of LaMetric icons (`lm:<id>`) or your own image files |
@@ -88,7 +92,7 @@ The panel does **not** need to be paired in the Windows Bluetooth settings.
 
 ## Using the app
 
-On the left is the navigation (**Show now**, **Pages**, **Connections**, **Settings**) with the
+On the left is the navigation (**Show now**, **Pages**, **Work**, **Connections**, **Settings**) with the
 connection status below it. At the top there is always the **live preview** – it looks like the
 panel itself (round LEDs, animations included) – with **Next page**, **brightness** and **On/Off**.
 
@@ -211,6 +215,51 @@ The window's **X** only closes the window – the panel keeps being controlled. 
 - Icon: Claude logo or **Clawd**, the mascot from Claude Code. Clawd is animated: he blinks, looks around, waves, hops and sits down (an ~8 s loop that runs on the panel itself; switch it off with *Animate Clawd*).
 
   ![Clawd waving, hopping and sitting down](docs/images/clawd.gif)
+
+---
+
+## Work features
+
+![Work pages](docs/images/work-pages.png)
+
+All of these are off until you switch them on or tick their page, and only what is on gets fetched.
+
+**Under *Work***
+
+| Feature | What it does |
+|---|---|
+| **On air** | Red **ON AIR** while any app uses the microphone or camera (Teams, Zoom, browser …), read from Windows' privacy data. Windows only says "in use", not whether you are muted. |
+| **Focus timer** | Countdown with a bar, then a break, with a note from Clawd at the end of each. Can take over the panel while it runs. Does not change your Teams status. |
+| **Stopwatch** | Time on a task with your own label; resets when the app restarts. |
+| **Door sign** | One click: *Do not disturb*, *Back soon*, *Come in* (also in the tray menu). |
+| **Break reminder** | After 90 minutes at the PC (adjustable); 5 minutes away counts as a break. |
+| **Claude limit warning** | Note at 80 % and 90 % of the session or week (adjustable), with the time it resets. |
+
+**New pages** (tick them under *Pages*): countdown or end of work (`Home in 23 min`, `Vacation 45 days`), unread mail (classic Outlook), unread in Teams (from its log file, no sign-in), day overview (`3 left`, `60% busy`), GitHub, service monitor, PC values (CPU, memory, battery), open Claude sessions, team message.
+
+**Under *Connections***
+
+| Feature | What it does |
+|---|---|
+| **GitHub** | Build status, pull requests waiting for your review, open issues; notes when a build fails or a new issue arrives. Public repositories need no token; a token for private ones is stored encrypted for your Windows user. |
+| **Service monitor** | Checks a list of addresses (`API = https://…`) and alerts when one goes down. |
+| **Team message** | Shows the first line of a shared text file or web address. Whoever can change that file writes on everyone's panel; nothing is sent back. |
+| **Local interface** | Lets scripts on this PC write to the panel, see below. |
+
+**Under *Settings***: **profiles** remember ticked pages, brightness and transition, can switch by time of day and are in the tray menu. **Shortcuts** (`Ctrl+Alt+N` next page, `F` focus timer, `W` stopwatch, `B` back to rotation) work everywhere in Windows. **Night mode** can switch the panel off completely. Every page has its own **schedule** in the page editor.
+
+### Local interface
+
+Switch it on under *Connections › Local interface* to get your address with its secret, then:
+
+```powershell
+curl -X POST http://127.0.0.1:47814/api/<secret>/message -d "Backup done"
+curl -X POST http://127.0.0.1:47814/api/<secret>/message -d "{\"text\": \"Build\", \"progress\": 42, \"seconds\": 30}"
+curl -X POST http://127.0.0.1:47814/api/<secret>/clear -d ""
+curl http://127.0.0.1:47814/api/<secret>/status
+```
+
+JSON fields: `text`, `color` (`#rrggbb`), `icon` (emoji or built-in name), `effect`, `seconds` (0 = until cleared, default 10), `progress` (0–100). It only listens on this PC, and the secret keeps web pages out.
 
 ---
 
@@ -392,6 +441,10 @@ pixelpanel/
   pages.py        page + live data -> picture/GIF (emojis, icons, Teams, Claude, weather …)
   transitions.py  transitions between pages (incl. Nyan Cat)
   sources.py      Teams log, Claude usage, weather (Open-Meteo)
+  work.py         on air, timers, reminders, profiles, schedules, GitHub, monitors, team message
+  api.py          local interface for scripts
+  hotkeys.py      global keyboard shortcuts
+  gui_work.py     window sections of the work features
   claude_hooks.py Claude session alerts: tracker, local server, Claude Code settings
   calendars.py    calendar without sign-in: classic Outlook (COM) and ICS link
   m365.py         Microsoft 365 calendar (MSAL sign-in, Graph calendarView)

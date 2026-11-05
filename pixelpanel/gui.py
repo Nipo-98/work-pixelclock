@@ -19,7 +19,7 @@ from PySide6.QtWidgets import (
 import secrets
 from concurrent.futures import ThreadPoolExecutor
 
-from . import __version__, autostart, calendars, claude_hooks, config, pages, sources, theme, transitions, updater
+from . import __version__, autostart, calendars, claude_hooks, config, gui_work, pages, sources, theme, transitions, updater
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -252,6 +252,7 @@ class PageEditor(QWidget):
             logo.currentIndexChanged.connect(
                 lambda _: (self._set("logo", logo.currentData()), animate.setVisible(logo.currentData() == "clawd")))
             self.form.addRow("", animate)
+        gui_work.page_editor_rows(self, page)
 
     def _browse_image(self, field: QLineEdit) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose an image", "", "Images (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
@@ -273,7 +274,7 @@ def page_title(page: dict) -> str:
     return f"{title}  ({page.get('duration', 10)} s)"
 
 
-class MainWindow(QMainWindow):
+class MainWindow(gui_work.WorkSections, QMainWindow):
     def __init__(self, cfg: dict, engine: Engine, bridge: Bridge) -> None:
         super().__init__()
         self.cfg = cfg
@@ -323,6 +324,7 @@ class MainWindow(QMainWindow):
         sections = [
             ("Show now", "\ue768", scrolled(self._build_now_tab())),
             ("Pages", "\ue8fd", self._build_pages_tab()),
+            ("Work", "\ue823", scrolled(self._build_work_tab())),
             ("Connections", "\ue71b", scrolled(self._build_live_tab())),
             ("Settings", "\ue713", scrolled(self._build_settings_tab())),
         ]
@@ -675,6 +677,10 @@ class MainWindow(QMainWindow):
         lay.addWidget(box)
         lay.addWidget(self._build_attention_box())
         lay.addWidget(self._build_calendar_box())
+        lay.addWidget(self._build_github_box())
+        lay.addWidget(self._build_monitor_box())
+        lay.addWidget(self._build_team_box())
+        lay.addWidget(self._build_api_box())
         lay.addStretch(1)
         return w
 
@@ -883,6 +889,8 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(self._build_panel_settings())
+        lay.addWidget(self._build_profile_box())
+        lay.addWidget(self._build_hotkey_box())
         night = self.cfg["night"]
         box = QGroupBox("Night mode")
         form = QFormLayout(box)
@@ -901,6 +909,7 @@ class MainWindow(QMainWindow):
         nb.setValue(int(night.get("brightness", 5)))
         nb.valueChanged.connect(lambda v: self._set_sub("night", "brightness", v))
         form.addRow("Night brightness", nb)
+        form.addRow("", self._night_off_check())
         lay.addWidget(box)
 
         box = QGroupBox("Weather")
@@ -1033,6 +1042,7 @@ class MainWindow(QMainWindow):
     # --- engine callbacks ------------------------------------------------------------------------
 
     def _on_status(self, st: Status) -> None:
+        self._on_work_status(st)
         self.conn_label.setText(f"●  {st.connection}")
         self.conn_label.setProperty("ok", st.connected)
         self.conn_label.style().polish(self.conn_label)
@@ -1120,6 +1130,7 @@ class MainWindow(QMainWindow):
         tray_light.toggled.connect(self.light_cb.setChecked)
         self.light_cb.toggled.connect(tray_light.setChecked)
         menu.addAction(tray_light)
+        self._extend_tray(menu)
         menu.addSeparator()
         menu.addAction("Quit", self.quit)
         self.tray.setContextMenu(menu)
@@ -1238,6 +1249,7 @@ class MainWindow(QMainWindow):
         self._quitting = True
         self._save_now()
         self.tray.hide()
+        self._hotkeys.unregister()
         self.engine.stop()
         QApplication.quit()
 
@@ -1257,6 +1269,12 @@ def run(start_hidden: bool = False) -> int:
         QMessageBox.information(None, "Pixel Panel", "Pixel Panel is already running (tray icon).")
         return 0
 
+    attention = config.load()["claude"]["attention"]
+    if attention.get("enabled") and attention.get("token") and claude_hooks.is_installed():
+        try:  # a new version may listen to more events
+            claude_hooks.install(claude_hooks.SETTINGS_FILE, f"{claude_hooks.URL_BASE}/{attention['token']}")
+        except claude_hooks.HookError as err:
+            log.warning("Claude hooks: %s", err)
     updater.cleanup()  # remove the previous version (PixelPanel.exe.old) after an update
     cfg = config.load()
     bridge = Bridge()
