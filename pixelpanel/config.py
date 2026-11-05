@@ -65,7 +65,10 @@ def default_config() -> dict:
             "bar_width": 2,  # px of the status stripes left and right (1-3)
             "light_states": ["Busy", "DoNotDisturb", "InACall", "InAMeeting", "Presenting", "OnThePhone"],
         },
-        "claude": {"enabled": True, "interval": 120},
+        "claude": {"enabled": True, "interval": 120,
+                   # alert on the panel when a Claude Code session needs attention (off until asked for)
+                   "attention": {"enabled": False, "token": "", "input": True, "idle": True, "error": True,
+                                 "seconds": 15}},
         # provider: "outlook" (classic Outlook on this PC), "ics" (calendar link) or "graph"
         # (Microsoft 365 sign-in; client/tenant id from an app registration)
         "calendar": {"enabled": False, "provider": "outlook", "ics_url": "", "client_id": "", "tenant_id": "",

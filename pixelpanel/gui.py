@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
     QSlider, QSpinBox, QStackedWidget, QSystemTrayIcon, QTimeEdit, QToolButton, QVBoxLayout, QWidget,
 )
 
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 
-from . import __version__, autostart, calendars, config, pages, sources, theme, transitions, updater
+from . import __version__, autostart, calendars, claude_hooks, config, pages, sources, theme, transitions, updater
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -670,11 +671,94 @@ class MainWindow(QMainWindow):
         hint.setWordWrap(True)
         form.addRow(hint)
         lay.addWidget(box)
+        lay.addWidget(self._build_attention_box())
         lay.addWidget(self._build_calendar_box())
         lay.addStretch(1)
         return w
 
     # --- tab: calendar --------------------------------------------------------------------------
+
+    def _build_attention_box(self) -> QGroupBox:
+        cfg = self.cfg["claude"]["attention"]
+        box = QGroupBox("Claude sessions")
+        form = QFormLayout(box)
+        self.attention_cb = QCheckBox("Alert on the panel when a Claude Code session needs attention")
+        self.attention_cb.setChecked(bool(cfg.get("enabled")))
+        self.attention_cb.toggled.connect(self._set_attention)
+        form.addRow("", self.attention_cb)
+        kinds = QHBoxLayout()
+        for key, label, tip in (("input", "Needs a decision", "Waits for a permission or an answer"),
+                                ("idle", "Finished", "Done and waiting for you for about a minute"),
+                                ("error", "Error", "The turn ended with an API error")):
+            cb = QCheckBox(label)
+            cb.setToolTip(tip)
+            cb.setChecked(bool(cfg.get(key, True)))
+            cb.toggled.connect(lambda v, k=key: self._set_attention_option(k, v))
+            kinds.addWidget(cb)
+        kinds.addStretch(1)
+        form.addRow("Alert for", kinds)
+        row = QHBoxLayout()
+        seconds = QSpinBox()
+        seconds.setRange(3, 600)
+        seconds.setSuffix(" s")
+        seconds.setValue(int(cfg.get("seconds", 15)))
+        seconds.valueChanged.connect(lambda v: self._set_attention_option("seconds", v))
+        test = QPushButton("Send test alert")
+        test.clicked.connect(self._test_attention)
+        row.addWidget(seconds)
+        row.addWidget(test)
+        row.addStretch(1)
+        form.addRow("Show for", row)
+        self.attention_status = QLabel("Off", objectName="muted")
+        self.attention_status.setWordWrap(True)
+        form.addRow("Status", self.attention_status)
+        hint = QLabel("Clawd pulls the alert onto the panel; it stays in the rotation until the session goes on. "
+                      "Only the project folder name is used – no prompts or answers. Works for Claude Code on "
+                      "this PC (terminal and VS Code).", objectName="hint")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+        return box
+
+    def _set_attention_option(self, key: str, value) -> None:
+        self.cfg["claude"]["attention"][key] = value
+        self._changed()
+
+    def _test_attention(self) -> None:
+        if not self.cfg["claude"]["attention"].get("enabled"):
+            self.attention_status.setText("Switch the alerts on first.")
+            return
+        self.engine.attention_test()
+
+    def _set_attention(self, on: bool) -> None:
+        cfg = self.cfg["claude"]["attention"]
+        try:
+            if on:
+                answer = QMessageBox.question(
+                    self, "Claude session alerts",
+                    "Pixel Panel will add hooks to Claude Code's settings:\n"
+                    f"{claude_hooks.SETTINGS_FILE}\n\n"
+                    "Claude Code then reports to this PC only (127.0.0.1) when a session needs you. Your other "
+                    "settings stay as they are and a backup is made. Switching this off removes the hooks again.")
+                if answer != QMessageBox.StandardButton.Yes:
+                    self._revert_attention(False)
+                    return
+                cfg["token"] = cfg.get("token") or secrets.token_urlsafe(24)
+                claude_hooks.install(claude_hooks.SETTINGS_FILE, f"{claude_hooks.URL_BASE}/{cfg['token']}")
+            else:
+                claude_hooks.uninstall(claude_hooks.SETTINGS_FILE)
+        except claude_hooks.HookError as err:
+            log.warning("Claude hooks: %s", err)
+            QMessageBox.warning(self, "Claude session alerts", str(err))
+            self._revert_attention(not on)
+            return
+        cfg["enabled"] = on
+        self.attention_status.setText("Listening – no session needs you right now" if on else "Off")
+        self._changed()
+
+    def _revert_attention(self, value: bool) -> None:
+        self.attention_cb.blockSignals(True)
+        self.attention_cb.setChecked(value)
+        self.attention_cb.blockSignals(False)
 
     def _build_calendar_box(self) -> QGroupBox:
         cal = self.cfg["calendar"]
@@ -960,6 +1044,8 @@ class MainWindow(QMainWindow):
                                     f"Week: {fmt(c.week, c.week_reset)}" + (f"\nPlan: {c.plan}" if c.plan else ""))
         if st.calendar:
             self.cal_status.setText(st.calendar)
+        if st.attention:
+            self.attention_status.setText(st.attention)
         m = st.meeting
         if m is None:
             self.cal_next.setText("–")

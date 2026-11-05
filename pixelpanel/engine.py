@@ -16,7 +16,7 @@ from concurrent.futures import Future
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 
-from . import ble, calendars, m365, pages, sources, transitions
+from . import ble, calendars, claude_hooks, m365, pages, sources, transitions
 from .config import PAGE_TYPES
 from .core import protocol as proto
 from .core import render
@@ -29,6 +29,9 @@ RECONNECT_EVERY = 15.0
 TEAMS_EVERY = 2.0
 WEATHER_EVERY = 15 * 60
 CALENDAR_EVERY = 5 * 60
+ATTENTION_TAKEOVER = {"id": "_attention", "type": "attention", "pull": True}
+ATTENTION_PAGE = {"id": "_attention_page", "type": "attention", "duration": 8, "enabled": True,
+                  "label": "Claude needs attention"}
 
 
 def _clock() -> float:
@@ -50,6 +53,7 @@ class Status:
     weather: sources.Weather | None = None
     meeting: m365.Meeting | None = None
     calendar: str = ""  # account or problem, for the settings tab
+    attention: str = ""  # state of the Claude session alerts, for the settings tab
     error: str | None = None
 
 
@@ -98,6 +102,10 @@ class Engine:
         self._next_calendar = 0.0
         self._calendar: m365.Calendar | None = None
         self._calendar_ids: tuple[str, str] | None = None
+        self.tracker = claude_hooks.Tracker()
+        self._attention_until = 0.0
+        self._attention_error = ""
+        self._hook_server: claude_hooks.HookServer | None = None
         self._applied: dict = {}
         self._stop = False
         self._wake_event: asyncio.Event | None = None
@@ -106,9 +114,13 @@ class Engine:
 
     def start(self) -> None:
         self._thread.start()
+        self._sync_hook_server()
 
     def stop(self) -> None:
         self._stop = True
+        if self._hook_server is not None:
+            self._hook_server.stop()
+            self._hook_server = None
         if self._loop.is_running():
             fut = asyncio.run_coroutine_threadsafe(self.client.disconnect(), self._loop)
             try:
@@ -131,8 +143,62 @@ class Engine:
             self._next_calendar = 0  # source changed: fetch now
             if not cal.get("enabled"):
                 self.ctx.meeting = None
+        self._sync_hook_server()
         self._next_connect = 0
         self._wake()
+
+    # --- Claude session alerts --------------------------------------------------------------------
+
+    def _attention_cfg(self) -> dict:
+        return self.config["claude"].get("attention") or {}
+
+    def _sync_hook_server(self) -> None:
+        """The local server runs exactly while the alerts are switched on."""
+        cfg = self._attention_cfg()
+        wanted = bool(cfg.get("enabled") and cfg.get("token"))
+        if wanted and self._hook_server is None:
+            try:
+                self._hook_server = claude_hooks.HookServer(cfg["token"], self._on_hook_event)
+                self._hook_server.start()
+                self._attention_error = ""
+            except OSError as err:
+                log.warning("Claude hook server: %s", err)
+                self._attention_error = f"Port {claude_hooks.PORT} is in use – alerts cannot be received"
+        elif not wanted and self._hook_server is not None:
+            self._hook_server.stop()
+            self._hook_server = None
+        if not wanted and self.tracker.pending:
+            self.tracker.pending.clear()
+            self.ctx.attention = None
+
+    def _on_hook_event(self, event: dict) -> None:
+        """Called on the server's thread; the engine state belongs to the loop's thread."""
+        self._loop.call_soon_threadsafe(self.attention_event, event)
+
+    def attention_event(self, event: dict, now: float | None = None) -> None:
+        cfg = self._attention_cfg()
+        if not cfg.get("enabled"):
+            return
+        now = _clock() if now is None else now
+        kinds = {k for k in ("input", "idle", "error") if cfg.get(k, True)}
+        new = self.tracker.apply(event, now, kinds)
+        summary = self.tracker.summary()
+        if summary != self.ctx.attention:
+            log.info("Claude sessions: %s", summary)
+            self.ctx.attention = summary
+            self._publish()
+        if new:
+            self._attention_until = now + max(3, int(cfg.get("seconds", 15)))
+        self._wake()
+
+    def attention_test(self) -> None:
+        """A pretend session asks for attention and goes away again (button in the settings)."""
+        event = {"hook_event_name": "Notification", "notification_type": "permission_prompt",
+                 "session_id": "_test", "cwd": "Test"}
+        seconds = max(3, int(self._attention_cfg().get("seconds", 15)))
+        self._loop.call_soon_threadsafe(self.attention_event, event)
+        self._loop.call_soon_threadsafe(self._loop.call_later, seconds + 3, self.attention_event,
+                                        {"hook_event_name": "SessionEnd", "session_id": "_test"})
 
     def show_message(self, page: dict, seconds: float | None) -> None:
         self._message = Message(copy.deepcopy(page), time.monotonic() + seconds if seconds else None)
@@ -233,10 +299,24 @@ class Engine:
         self.status.claude = self.ctx.claude
         self.status.weather = self.ctx.weather
         self.status.meeting = self.ctx.meeting
+        self.status.attention = self._attention_text()
         self.on_status(copy.copy(self.status))
+
+    def _attention_text(self) -> str:
+        if not self._attention_cfg().get("enabled"):
+            return ""
+        if self._attention_error:
+            return self._attention_error
+        s = self.ctx.attention
+        if s is None:
+            return "Listening – no session needs you right now"
+        return f"{s.count} session(s) waiting, latest: {s.project} ({s.kind})"
 
     async def _tick(self) -> None:
         now_m = _clock()
+        if self.tracker.purge(now_m):
+            self.ctx.attention = self.tracker.summary()
+            self._publish()
         cfg = self.config
         changed = await self._update_sources(cfg, now_m)
         await self._ensure_connection(cfg, now_m)
@@ -275,7 +355,7 @@ class Engine:
                 else:
                     cal = self._get_calendar()
                     self.ctx.meeting = await asyncio.to_thread(cal.fetch)
-                    self.status.calendar = f"Angemeldet als {await asyncio.to_thread(cal.account)}"
+                    self.status.calendar = f"Signed in as {await asyncio.to_thread(cal.account)}"
             except PermissionError:
                 self.ctx.meeting, self.status.calendar = None, "Not signed in – click Sign in"
             except urllib.error.HTTPError as err:
@@ -353,7 +433,8 @@ class Engine:
             self._applied["time_synced"] = day
 
     def _rotation(self, cfg: dict) -> list[dict]:
-        return [p for p in cfg["pages"] if p.get("enabled")]
+        pages_on = [p for p in cfg["pages"] if p.get("enabled")]
+        return [*pages_on, ATTENTION_PAGE] if self.ctx.attention is not None else pages_on
 
     def _choose(self, cfg: dict, now_m: float) -> tuple[dict | None, str, bool]:
         msg = self._message
@@ -363,6 +444,8 @@ class Engine:
                 self._shown = _Shown()
             else:
                 return msg.page, "Message", False
+        if self.ctx.attention is not None and now_m < self._attention_until:
+            return ATTENTION_TAKEOVER, "Claude needs attention", False
         cal = cfg.get("calendar", {})
         meeting = self.ctx.meeting
         if cal.get("enabled") and meeting and int(cal.get("remind_minutes", 0)) > 0:
@@ -385,14 +468,17 @@ class Engine:
         page = rotation[self._rot_index]
         if not self._rot_min:
             self._rot_min = float(page.get("duration", 10))
-        return page, PAGE_TYPES.get(page["type"], page["type"]), False
+        return page, page.get("label") or PAGE_TYPES.get(page["type"], page["type"]), False
 
     async def _transition(self, old, new, orientation: str) -> None:
         """Play the configured transition; returns when it has reached the new picture."""
         kind = self.config.get("transition", "none")
         anim = await asyncio.to_thread(transitions.build, kind, old, new)
-        if anim is None:
-            return
+        if anim is not None:
+            await self._play(anim, kind, orientation)
+
+    async def _play(self, anim: Rendered, kind: str, orientation: str) -> None:
+        """Send a one-shot animation; returns when it has reached its held last frame."""
         data, is_gif = await asyncio.to_thread(render.encode, render.to_panel(anim, orientation))
         t0 = time.monotonic()
         await self.client.send_image(data, is_gif)
@@ -408,7 +494,8 @@ class Engine:
         now = datetime.now()
         teams = self.config["teams"]
         frame, bars = None, 0
-        if not light and teams.get("enabled", True) and teams.get("status_frame") and self.ctx.teams:
+        if not light and page["type"] != "attention" and teams.get("enabled", True) and teams.get("status_frame") \
+                and self.ctx.teams:
             frame = sources.teams_label(self.ctx.teams)[1]
             bars = max(1, min(3, int(teams.get("bar_width", 2))))
         key = pages.signature(page, self.ctx, now) + (light, frame, bars, self.config.get("orientation"))
@@ -443,7 +530,11 @@ class Engine:
                     await self.client.command(out.data)
                 else:
                     if page_id != self._panel_page and self._panel_img is not None:
-                        await self._transition(self._panel_img, out.frames[0], orientation)
+                        if page.get("pull"):  # Clawd pulls the alert in
+                            pull = await asyncio.to_thread(pages.attention_pull, self._panel_img, out.frames[0])
+                            await self._play(pull, "clawd pull", orientation)
+                        else:
+                            await self._transition(self._panel_img, out.frames[0], orientation)
                     data, is_gif = await asyncio.to_thread(render.encode, render.to_panel(out, orientation))
                     await self.client.send_image(data, is_gif)
                     if page_id != self._panel_page and any(p is page for p in self._rotation(self.config)):

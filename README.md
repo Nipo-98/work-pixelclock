@@ -20,6 +20,7 @@ a single `PixelPanel.exe`, no installation needed.
 - [Using the app](#using-the-app)
 - [Teams status](#teams-status)
 - [Claude usage](#claude-usage)
+- [Claude session alerts](#claude-session-alerts)
 - [Calendar (next meeting)](#calendar-next-meeting)
 - [Weather](#weather)
 - [Updates](#updates)
@@ -40,6 +41,7 @@ a single `PixelPanel.exe`, no installation needed.
 | **Transitions** | Page changes jump, push, shoot in, fade, wipe, dissolve – or arrive with **Nyan Cat** |
 | **Teams status** | A stripe in the Teams colour on both sides of every page; for "Busy", "In a call", "Don't disturb" … the whole panel lights up in the status colour – automatically, no sign-in |
 | **Claude usage** | Percent of the 5-hour session and of the weekly limit of your Claude plan, coloured green/yellow/red, with the Claude logo or **Clawd** |
+| **Claude session alerts** | Optional: Clawd pulls an alert onto the panel when a Claude Code session needs you |
 | **Calendar** | Next meeting from Outlook (no sign-in), a calendar link or Microsoft 365, with a countdown reminder shortly before it starts |
 | **Emojis** | Real colour emojis (Windows emoji font) at 16 × 16 pixels, ~50 built-in pixel icons, thousands of LaMetric icons (`lm:<id>`) or your own image files |
 | **Effects** | Rainbow text, matrix, twinkle, fire, plasma, snow, rain, pulse |
@@ -212,6 +214,33 @@ The window's **X** only closes the window – the panel keeps being controlled. 
 
 ---
 
+## Claude session alerts
+
+Optional, off by default: **Clawd walks onto the panel and pulls in an alert** when a Claude Code
+session on this PC (terminal or VS Code) needs you, then waves next to the reason and the project.
+The alert stays in the rotation until the session goes on.
+
+| On the panel | When |
+|---|---|
+| **Attention** | Claude waits for a permission or an answer |
+| **Finished** | Claude is done and has been waiting for you for about a minute |
+| **Error** | The turn ended with an API error (rate limit, overload …) |
+| **2 waiting** | Several sessions wait; the most urgent one sets colour and project |
+
+Switch it on under *Connections › Claude sessions*. You choose which of the three cases alert you and
+for how long the alert takes over the panel; **Send test alert** tries it out.
+
+- Switching it on adds [hooks](https://code.claude.com/docs/en/hooks) to
+  `%USERPROFILE%\.claude\settings.json` (after asking, with a backup next to the file). Your other
+  settings and hooks stay untouched; switching it off removes only Pixel Panel's entries.
+- Claude Code reports to `127.0.0.1` only, to a URL with a random token, so a website cannot raise
+  alerts. Only session ID, project folder name and event type are used – prompts, answers and tool
+  input are dropped on arrival.
+- If Pixel Panel is not running, Claude Code keeps working normally; it may show a short hook error.
+  A session that disappears without notice is cleared after an hour.
+
+---
+
 ## Calendar (next meeting)
 
 ![Calendar](docs/images/calendar.png)
@@ -310,6 +339,7 @@ To reset, quit the app and delete `config.json`.
 | **Teams status stays "no status found"** | Only the new Teams client is supported. Change your status in Teams once, then it shows up in the log. |
 | **Claude: "Not signed in to Claude Code" / "Sign-in expired"** | Start Claude Code and `/login` if needed. |
 | **Calendar: "Outlook is not responding"** | Classic Outlook must be installed and have a profile; open it once manually. Otherwise use the ICS link. |
+| **Claude alerts don't appear** | Check *Connections › Claude sessions* (status line, **Send test alert**). Restart a session that was already open if it doesn't pick up the hooks. |
 | **"Pixel Panel is already running"** | An instance is already running – tray icon (maybe under ^). |
 | Anything else | Check `%APPDATA%\PixelPanel\pixelpanel.log`. |
 
@@ -352,6 +382,7 @@ pixelpanel/
   pages.py        page + live data -> picture/GIF (emojis, icons, Teams, Claude, weather …)
   transitions.py  transitions between pages (incl. Nyan Cat)
   sources.py      Teams log, Claude usage, weather (Open-Meteo)
+  claude_hooks.py Claude session alerts: tracker, local server, Claude Code settings
   calendars.py    calendar without sign-in: classic Outlook (COM) and ICS link
   m365.py         Microsoft 365 calendar (MSAL sign-in, Graph calendarView)
   config.py       settings (JSON in %APPDATA%\PixelPanel)

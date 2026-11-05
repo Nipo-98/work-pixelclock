@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
-from . import sources
+from . import claude_hooks, sources, transitions
 from .config import ICON_CACHE
 from .m365 import Meeting
 from .core import icons, render
@@ -41,6 +41,7 @@ class Context:
     claude: sources.ClaudeUsage | None = None
     weather: sources.Weather | None = None
     meeting: Meeting | None = None
+    attention: claude_hooks.Summary | None = None
 
 
 @dataclass
@@ -101,12 +102,15 @@ _CLAWD_FULL = [row for row in _CLAWD for _ in (0, 1)]
 CLAWD_GROUND = 14  # row below Clawd's feet on the 16 x 16 icon canvas
 
 
-def _clawd_pose(eyes: str = "open", arm: str | None = None, dy: int = 0, sit: bool = False) -> Image.Image:
+def _clawd_pose(eyes: str = "open", arm: str | None = None, dy: int = 0, sit: bool = False,
+                step: bool = False) -> Image.Image:
     """One frame of Clawd on a 16 x 16 canvas.
 
     eyes: open | closed | left | right; arm: None | out | in (right arm raised, hand tipping); dy: lift (hop);
     sit: legs folded away and the body lowered onto the ground."""
     rows = [list(r) for r in _CLAWD_FULL]
+    if step:  # walking: the legs are one pixel further
+        rows[8] = rows[9] = list("..X.X....X.X....")
     for y in (2, 3):  # eye holes at x 4 and 11
         for x in (4, 11):
             rows[y][x] = "X"
@@ -385,6 +389,70 @@ def text_screen(page: dict) -> Screen:
                   effect=page.get("effect", "none"))
 
 
+ATTENTION_COLORS = {"input": (255, 190, 0), "idle": (0, 200, 60), "error": (230, 20, 20)}
+ATTENTION_TITLES = {"input": "Attention", "idle": "Finished", "error": "Error"}
+
+
+def attention_title(summary: claude_hooks.Summary) -> str:
+    return f"{summary.count} waiting" if summary.count > 1 else ATTENTION_TITLES[summary.kind]
+
+
+def _attention_timeline() -> list[tuple[Image.Image, int]]:
+    """Clawd calling for attention: waves, then a short pause with a blink."""
+    wave = [(_clawd_pose(arm="out"), 220), (_clawd_pose(arm="in"), 220)]
+    return [*wave, *wave, *wave, (_clawd_pose(), 500), (_clawd_pose(eyes="closed"), 140), (_clawd_pose(), 700)]
+
+
+def _paste_pose(frame: Image.Image, pose: Image.Image, x: int = 0) -> None:
+    """Clawd on a cleared square at x; larger panels get him scaled up by a whole factor."""
+    size = min(frame.size)
+    if size != pose.width:
+        pose = pose.resize((size, size), Image.Resampling.NEAREST)
+    ImageDraw.Draw(frame).rectangle((x, 0, x + size - 1, size - 1), fill=render.BLACK)
+    frame.paste(pose, (x, 0), pose)
+
+
+def render_attention(summary: claude_hooks.Summary, w: int, h: int) -> Rendered:
+    """Clawd waving next to the reason and the project; a long project name scrolls meanwhile."""
+    screen = Screen([Line(attention_title(summary), ATTENTION_COLORS[summary.kind]),
+                     Line(summary.project, render.WHITE)], icon=_clawd_pose())
+    base = render.render_screen(screen, w, h)
+    if min(w, h) % 16:  # no clean scaling for Clawd on this panel size
+        return base
+    timeline = _attention_timeline()
+    if not base.animated:
+        frames = [f.copy() for f in base.frames * len(timeline)]
+        for frame, (pose, _ms) in zip(frames, timeline, strict=True):
+            _paste_pose(frame, pose)
+        return Rendered(frames, [ms for _, ms in timeline])
+    # scrolling text sets the frames; Clawd's pose follows the elapsed time
+    cycle = sum(ms for _, ms in timeline)
+    frames, elapsed = [], 0
+    for frame, duration in zip(base.frames, base.durations, strict=True):
+        at, frame = elapsed % cycle, frame.copy()
+        for pose, ms in timeline:
+            if at < ms:
+                _paste_pose(frame, pose)
+                break
+            at -= ms
+        frames.append(frame)
+        elapsed += duration
+    return Rendered(frames, base.durations, scrolls=True)
+
+
+def attention_pull(old: Image.Image, final: Image.Image) -> Rendered:
+    """Clawd walks in from the right and pulls the alert behind him over the old page."""
+    w, h = final.size
+    step = 2
+    frames = []
+    for k, x in enumerate(range(w - step, 0, -step)):
+        frame = old.copy()
+        frame.paste(final.crop((0, 0, w - x, h)), (x, 0))
+        _paste_pose(frame, _clawd_pose(step=bool((k // 2) % 2)), x)
+        frames.append(frame)
+    return Rendered([*frames, final.copy()], [50] * len(frames) + [transitions.HOLD_MS])
+
+
 def animate_icon(screen: Screen, w: int, h: int) -> Rendered:
     """The page once per Clawd pose. Pages that scroll anyway keep a still Clawd (one loop only)."""
     still = render.render_screen(screen, w, h)
@@ -399,6 +467,9 @@ def animate_icon(screen: Screen, w: int, h: int) -> Rendered:
 
 def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rendered | Native:
     t = page["type"]
+    if t == "attention":
+        summary = ctx.attention or claude_hooks.Summary("idle", "Claude", 1)
+        return render_attention(summary, w, h)
     if t == "native_clock":
         return Native(proto.set_clock_mode(int(page.get("style", 1)), now, bool(page.get("show_date", True))),
                       f"Built-in clock {page.get('style', 1)}")
@@ -462,6 +533,8 @@ def signature(page: dict, ctx: Context, now: datetime) -> tuple:
     if t == "claude":
         u = ctx.claude
         return base + ((u.session, u.week, u.error) if u else None,)
+    if t == "attention":
+        return base + (ctx.attention,)
     if t == "calendar":  # the minute matters for the countdown and for "running"
         return base + (ctx.meeting, now.strftime("%Y%m%d%H%M"))
     return base
