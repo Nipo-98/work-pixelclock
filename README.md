@@ -249,6 +249,16 @@ for how long the alert takes over the panel; **Send test alert** tries it out.
 
 - Page **Next meeting**: time (or weekday + time if not today) and title. During a meeting:
   "till 11:00".
+- **Show on the panel** (under *Connections › Calendar*) sets what the page and the reminder show:
+
+| Setting | Before a meeting | During a meeting |
+|---|---|---|
+| **Title and time** | `10:30` + title | `till 11:00` + title |
+| **Time only** (no titles) | `10:30` | `till 11:00` |
+| **Free till / Busy till** | `Free till` + `10:30` | `Busy till` + `11:00` |
+
+  "Busy till" counts meetings that follow without a gap as one block. The calendar icon can be
+  switched off for more room.
 - **Reminder:** X minutes before the start (default 5) a countdown "in 4 min" appears – with priority
   over status light and rotation.
 - Cancelled, declined, all-day and "free" meetings are skipped.

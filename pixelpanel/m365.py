@@ -12,7 +12,7 @@ import logging
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from .config import APP_DIR
@@ -31,6 +31,11 @@ class Meeting:
     start: datetime  # aware
     end: datetime
     location: str
+    busy_until: datetime | None = None  # end of the block of meetings without a gap, from this one on
+
+    @property
+    def busy_end(self) -> datetime:
+        return self.busy_until or self.end
 
     def running(self, now: datetime) -> bool:
         return self.start <= now < self.end
@@ -40,6 +45,19 @@ def _parse(value: dict) -> datetime:
     """Graph returns 'dateTime' without offset in the requested zone (UTC by default)."""
     raw = value["dateTime"].split(".")[0]
     return datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
+
+
+def pick_next(meetings: list[Meeting], now: datetime) -> Meeting | None:
+    """The running or next meeting, knowing until when the meetings after it follow without a gap."""
+    upcoming = sorted((m for m in meetings if m.end > now), key=lambda m: m.start)
+    if not upcoming:
+        return None
+    end = upcoming[0].end
+    for meeting in upcoming[1:]:
+        if meeting.start > end:
+            break
+        end = max(end, meeting.end)
+    return replace(upcoming[0], busy_until=end)
 
 
 def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
@@ -58,7 +76,7 @@ def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
             continue
         subject = (e.get("subject") or "Meeting").strip()
         found.append(Meeting(subject, start, end, ((e.get("location") or {}).get("displayName") or "").strip()))
-    return min(found, key=lambda m: m.start) if found else None
+    return pick_next(found, now)
 
 
 class Calendar:

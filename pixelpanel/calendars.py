@@ -12,7 +12,7 @@ import urllib.request
 import winreg
 from datetime import datetime, timedelta, timezone
 
-from .m365 import LOOKAHEAD, Meeting
+from .m365 import LOOKAHEAD, Meeting, pick_next
 
 log = logging.getLogger(__name__)
 
@@ -32,11 +32,6 @@ OUTLOOK_START_WAIT = 20  # seconds
 
 def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.astimezone()
-
-
-def _pick(candidates: list[Meeting], now: datetime) -> Meeting | None:
-    upcoming = [m for m in candidates if m.end > now]
-    return min(upcoming, key=lambda m: m.start) if upcoming else None
 
 
 # --- ICS -----------------------------------------------------------------------------------------
@@ -64,7 +59,7 @@ def next_from_ics(text: str, now: datetime) -> Meeting | None:
         start = _aware(start)
         end = _aware(end) if isinstance(end, datetime) else start + timedelta(minutes=30)
         found.append(Meeting(str(ev.get("SUMMARY", "Meeting")).strip(), start, end, str(ev.get("LOCATION", "")).strip()))
-    return _pick(found, now)
+    return pick_next(found, now)
 
 
 def fetch_ics(url: str, now: datetime | None = None) -> Meeting | None:
@@ -120,7 +115,7 @@ def next_from_outlook_items(items, now: datetime) -> Meeting | None:
         except AttributeError:
             continue
         found.append(Meeting(str(it.Subject or "Meeting").strip(), start, end, str(it.Location or "").strip()))
-    return _pick(found, now)
+    return pick_next(found, now)
 
 
 def fetch_outlook(now: datetime | None = None) -> Meeting | None:

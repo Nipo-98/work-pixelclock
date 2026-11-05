@@ -33,6 +33,8 @@ ORIENTATION_NAMES = {"landscape": "Normal", "upside_down": "Upside down",
                      "portrait_left": "Portrait (left end up)", "portrait_right": "Portrait (right end up)"}
 CLAUDE_SHOW = {"both": "Session (5 h) + week", "session": "Session (5 h) only, with bar",
                "week": "Week only, with bar"}
+CALENDAR_SHOW = {"details": "Title and time", "time": "Time only (no titles)",
+                 "free_busy": "Free till / Busy till"}
 PREVIEW_WIDTH = 640
 
 
@@ -838,6 +840,16 @@ class MainWindow(QMainWindow):
         remind.setValue(int(cal.get("remind_minutes", 5)))
         remind.valueChanged.connect(lambda v: self._set_sub("calendar", "remind_minutes", v))
         form.addRow("Reminder", remind)
+        show = QComboBox()
+        for key, label in CALENDAR_SHOW.items():
+            show.addItem(label, key)
+        show.setCurrentIndex(max(0, show.findData(cal.get("show", "details"))))
+        show.currentIndexChanged.connect(lambda _: self._set_sub("calendar", "show", show.currentData()))
+        form.addRow("Show on the panel", show)
+        cal_icon = QCheckBox("Show the calendar icon (off: more room, bigger time)")
+        cal_icon.setChecked(bool(cal.get("icon", True)))
+        cal_icon.toggled.connect(lambda v: self._set_sub("calendar", "icon", v))
+        form.addRow("", cal_icon)
         hint = QLabel("Shortly before a meeting the reminder shows a countdown (in 4 min); it takes priority over "
                       "the status light and the rotation. Add the Next meeting page under Pages.",
                       objectName="hint")

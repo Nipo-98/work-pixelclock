@@ -102,6 +102,7 @@ class Engine:
         self._next_calendar = 0.0
         self._calendar: m365.Calendar | None = None
         self._calendar_ids: tuple[str, str] | None = None
+        self._sync_calendar_view()
         self.tracker = claude_hooks.Tracker()
         self._attention_until = 0.0
         self._attention_error = ""
@@ -143,11 +144,17 @@ class Engine:
             self._next_calendar = 0  # source changed: fetch now
             if not cal.get("enabled"):
                 self.ctx.meeting = None
+        self._sync_calendar_view()
         self._sync_hook_server()
         self._next_connect = 0
         self._wake()
 
     # --- Claude session alerts --------------------------------------------------------------------
+
+    def _sync_calendar_view(self) -> None:
+        cal = self.config.get("calendar", {})
+        self.ctx.calendar_show = cal.get("show", "details")
+        self.ctx.calendar_icon = bool(cal.get("icon", True))
 
     def _attention_cfg(self) -> dict:
         return self.config["claude"].get("attention") or {}

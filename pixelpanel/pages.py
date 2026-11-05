@@ -42,6 +42,8 @@ class Context:
     weather: sources.Weather | None = None
     meeting: Meeting | None = None
     attention: claude_hooks.Summary | None = None
+    calendar_show: str = "details"  # details | time | free_busy
+    calendar_icon: bool = True
 
 
 @dataclass
@@ -348,23 +350,43 @@ def led_preview(rendered: Rendered, cell: int = 8) -> tuple[bytes, str]:
 CAL_COLOR = (0, 200, 230)
 
 
-def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool) -> Screen:
-    """Two lines: when (time, countdown or 'bis HH:MM') and the subject (scrolls when long)."""
-    icon = icons.builtin_icon("calendar")
-    if meeting is None:
-        return Screen([Line("No", sources.GREY), Line("meetings", sources.GREY)], icon=icon)
-    start, end = meeting.start.astimezone(), meeting.end.astimezone()
+CAL_FREE = (0, 200, 60)
+CAL_BUSY = (230, 20, 20)
+CAL_SOON = (255, 110, 0)
+
+
+def _clock_text(moment: datetime, now: datetime) -> str:
+    """HH:MM, with the weekday in front when it is not today."""
+    return f"{moment:%H:%M}" if moment.date() == now.date() else f"{WEEKDAYS[moment.weekday()]} {moment:%H:%M}"
+
+
+def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool, show: str = "details",
+                    icon: bool = True) -> Screen:
+    """The calendar page. show: details = when + title (scrolls when long), time = when only,
+    free_busy = "Free till" / "Busy till" + time. Titles appear only with details."""
+    picture = icons.builtin_icon("calendar") if icon else None
     now = now.astimezone()
-    if meeting.running(now):
-        when, color = f"till {end:%H:%M}", (230, 20, 20)
-    elif remind:
+    if meeting is None:
+        if show == "free_busy":
+            return Screen([Line("Free", CAL_FREE)], icon=picture)
+        return Screen([Line("No", sources.GREY), Line("meetings", sources.GREY)], icon=picture)
+    start, end = meeting.start.astimezone(), meeting.end.astimezone()
+    if remind and not meeting.running(now):  # the reminder is a countdown in every mode
         mins = max(0, -(-int((start - now).total_seconds()) // 60))
-        when, color = ("now" if mins == 0 else f"in {mins} min"), (255, 110, 0)
-    elif start.date() == now.date():
-        when, color = f"{start:%H:%M}", CAL_COLOR
+        second = meeting.subject if show == "details" else _clock_text(start, now)
+        return Screen([Line("now" if mins == 0 else f"in {mins} min", CAL_SOON), Line(second, render.WHITE)], icon=picture)
+    if show == "free_busy":
+        if meeting.running(now):
+            return Screen([Line("Busy till", CAL_BUSY), Line(_clock_text(meeting.busy_end.astimezone(), now), render.WHITE)],
+                          icon=picture)
+        return Screen([Line("Free till", CAL_FREE), Line(_clock_text(start, now), render.WHITE)], icon=picture)
+    if meeting.running(now):
+        when, color = f"till {end:%H:%M}", CAL_BUSY
     else:
-        when, color = f"{WEEKDAYS[start.weekday()]} {start:%H:%M}", CAL_COLOR
-    return Screen([Line(when, color), Line(meeting.subject, render.WHITE)], icon=icon)
+        when, color = _clock_text(start, now), CAL_COLOR
+    if show == "time":
+        return Screen([Line(when, color)], icon=picture)
+    return Screen([Line(when, color), Line(meeting.subject, render.WHITE)], icon=picture)
 
 
 def render_image_file(path: str, w: int, h: int) -> Rendered:
@@ -505,7 +527,7 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
         if page.get("logo") == "clawd" and page.get("animate", True):
             return animate_icon(screen, w, h)
     elif t == "calendar":
-        screen = calendar_screen(ctx.meeting, now, remind=bool(page.get("remind")))
+        screen = calendar_screen(ctx.meeting, now, bool(page.get("remind")), ctx.calendar_show, ctx.calendar_icon)
     else:
         screen = Screen([Line("?")])
     return render.render_screen(screen, w, h)

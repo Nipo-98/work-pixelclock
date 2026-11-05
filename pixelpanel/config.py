@@ -72,7 +72,7 @@ def default_config() -> dict:
         # provider: "outlook" (classic Outlook on this PC), "ics" (calendar link) or "graph"
         # (Microsoft 365 sign-in; client/tenant id from an app registration)
         "calendar": {"enabled": False, "provider": "outlook", "ics_url": "", "client_id": "", "tenant_id": "",
-                     "remind_minutes": 5},
+                     "remind_minutes": 5, "show": "details", "icon": True},
         "weather": {"city": "", "lat": None, "lon": None},
         "night": {"enabled": False, "start": "22:00", "end": "07:00", "brightness": 5},
         "autostart": False,
