@@ -7,13 +7,13 @@ import os
 import re
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageSequence
 
-from . import sources
+from . import claude_hooks, sources, transitions, work
 from .config import ICON_CACHE
 from .m365 import Meeting
 from .core import icons, render
@@ -41,6 +41,20 @@ class Context:
     claude: sources.ClaudeUsage | None = None
     weather: sources.Weather | None = None
     meeting: Meeting | None = None
+    attention: claude_hooks.Summary | None = None
+    calendar_show: str = "details"  # details | time | free_busy
+    calendar_icon: bool = True
+    day: work.DayStats | None = None
+    on_air: bool = False
+    focus: tuple[str, float, float] | None = None  # phase, seconds left, length
+    stopwatch: tuple[float, bool, str] = (0.0, False, "Project")  # elapsed, running, label
+    mail: int | None = None
+    teams_unread: int | None = None
+    github: work.GitHubState | None = None
+    monitors: tuple[work.Monitor, ...] | None = None
+    system: work.SystemStats | None = None
+    sessions: tuple[int, int] = (0, 0)  # open, waiting
+    team_message: str = ""
 
 
 @dataclass
@@ -101,12 +115,15 @@ _CLAWD_FULL = [row for row in _CLAWD for _ in (0, 1)]
 CLAWD_GROUND = 14  # row below Clawd's feet on the 16 x 16 icon canvas
 
 
-def _clawd_pose(eyes: str = "open", arm: str | None = None, dy: int = 0, sit: bool = False) -> Image.Image:
+def _clawd_pose(eyes: str = "open", arm: str | None = None, dy: int = 0, sit: bool = False,
+                step: bool = False) -> Image.Image:
     """One frame of Clawd on a 16 x 16 canvas.
 
     eyes: open | closed | left | right; arm: None | out | in (right arm raised, hand tipping); dy: lift (hop);
     sit: legs folded away and the body lowered onto the ground."""
     rows = [list(r) for r in _CLAWD_FULL]
+    if step:  # walking: the legs are one pixel further
+        rows[8] = rows[9] = list("..X.X....X.X....")
     for y in (2, 3):  # eye holes at x 4 and 11
         for x in (4, 11):
             rows[y][x] = "X"
@@ -344,23 +361,43 @@ def led_preview(rendered: Rendered, cell: int = 8) -> tuple[bytes, str]:
 CAL_COLOR = (0, 200, 230)
 
 
-def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool) -> Screen:
-    """Two lines: when (time, countdown or 'bis HH:MM') and the subject (scrolls when long)."""
-    icon = icons.builtin_icon("calendar")
-    if meeting is None:
-        return Screen([Line("No", sources.GREY), Line("meetings", sources.GREY)], icon=icon)
-    start, end = meeting.start.astimezone(), meeting.end.astimezone()
+CAL_FREE = (0, 200, 60)
+CAL_BUSY = (230, 20, 20)
+CAL_SOON = (255, 110, 0)
+
+
+def _clock_text(moment: datetime, now: datetime) -> str:
+    """HH:MM, with the weekday in front when it is not today."""
+    return f"{moment:%H:%M}" if moment.date() == now.date() else f"{WEEKDAYS[moment.weekday()]} {moment:%H:%M}"
+
+
+def calendar_screen(meeting: Meeting | None, now: datetime, remind: bool, show: str = "details",
+                    icon: bool = True) -> Screen:
+    """The calendar page. show: details = when + title (scrolls when long), time = when only,
+    free_busy = "Free till" / "Busy till" + time. Titles appear only with details."""
+    picture = icons.builtin_icon("calendar") if icon else None
     now = now.astimezone()
-    if meeting.running(now):
-        when, color = f"till {end:%H:%M}", (230, 20, 20)
-    elif remind:
+    if meeting is None:
+        if show == "free_busy":
+            return Screen([Line("Free", CAL_FREE)], icon=picture)
+        return Screen([Line("No", sources.GREY), Line("meetings", sources.GREY)], icon=picture)
+    start, end = meeting.start.astimezone(), meeting.end.astimezone()
+    if remind and not meeting.running(now):  # the reminder is a countdown in every mode
         mins = max(0, -(-int((start - now).total_seconds()) // 60))
-        when, color = ("now" if mins == 0 else f"in {mins} min"), (255, 110, 0)
-    elif start.date() == now.date():
-        when, color = f"{start:%H:%M}", CAL_COLOR
+        second = meeting.subject if show == "details" else _clock_text(start, now)
+        return Screen([Line("now" if mins == 0 else f"in {mins} min", CAL_SOON), Line(second, render.WHITE)], icon=picture)
+    if show == "free_busy":
+        if meeting.running(now):
+            return Screen([Line("Busy till", CAL_BUSY), Line(_clock_text(meeting.busy_end.astimezone(), now), render.WHITE)],
+                          icon=picture)
+        return Screen([Line("Free till", CAL_FREE), Line(_clock_text(start, now), render.WHITE)], icon=picture)
+    if meeting.running(now):
+        when, color = f"till {end:%H:%M}", CAL_BUSY
     else:
-        when, color = f"{WEEKDAYS[start.weekday()]} {start:%H:%M}", CAL_COLOR
-    return Screen([Line(when, color), Line(meeting.subject, render.WHITE)], icon=icon)
+        when, color = _clock_text(start, now), CAL_COLOR
+    if show == "time":
+        return Screen([Line(when, color)], icon=picture)
+    return Screen([Line(when, color), Line(meeting.subject, render.WHITE)], icon=picture)
 
 
 def render_image_file(path: str, w: int, h: int) -> Rendered:
@@ -382,7 +419,152 @@ def text_screen(page: dict) -> Screen:
     text, emoji = split_emoji(page.get("text", ""))
     icon_spec = page.get("icon") or emoji
     return Screen([Line(text or " ", _color(page))], icon=load_icon(icon_spec),
-                  effect=page.get("effect", "none"))
+                  effect=page.get("effect", "none"), progress=page.get("progress"))
+
+
+ATTENTION_COLORS = {"input": (255, 190, 0), "idle": (0, 200, 60), "error": (230, 20, 20)}
+ATTENTION_TITLES = {"input": "Attention", "idle": "Finished", "error": "Error"}
+
+
+def attention_title(summary: claude_hooks.Summary) -> str:
+    return f"{summary.count} waiting" if summary.count > 1 else ATTENTION_TITLES[summary.kind]
+
+
+def _attention_timeline() -> list[tuple[Image.Image, int]]:
+    """Clawd calling for attention: waves, then a short pause with a blink."""
+    wave = [(_clawd_pose(arm="out"), 220), (_clawd_pose(arm="in"), 220)]
+    return [*wave, *wave, *wave, (_clawd_pose(), 500), (_clawd_pose(eyes="closed"), 140), (_clawd_pose(), 700)]
+
+
+def _paste_pose(frame: Image.Image, pose: Image.Image, x: int = 0) -> None:
+    """Clawd on a cleared square at x; larger panels get him scaled up by a whole factor."""
+    size = min(frame.size)
+    if size != pose.width:
+        pose = pose.resize((size, size), Image.Resampling.NEAREST)
+    ImageDraw.Draw(frame).rectangle((x, 0, x + size - 1, size - 1), fill=render.BLACK)
+    frame.paste(pose, (x, 0), pose)
+
+
+def render_attention(summary: claude_hooks.Summary, w: int, h: int) -> Rendered:
+    return render_note(attention_title(summary), ATTENTION_COLORS[summary.kind], summary.project, w, h)
+
+
+def render_note(title: str, color: tuple[int, int, int], text: str, w: int, h: int) -> Rendered:
+    """Clawd waving next to a title and a text; a long text scrolls meanwhile."""
+    screen = Screen([Line(title, color), Line(text, render.WHITE)], icon=_clawd_pose())
+    base = render.render_screen(screen, w, h)
+    if min(w, h) % 16:  # no clean scaling for Clawd on this panel size
+        return base
+    timeline = _attention_timeline()
+    if not base.animated:
+        frames = [f.copy() for f in base.frames * len(timeline)]
+        for frame, (pose, _ms) in zip(frames, timeline, strict=True):
+            _paste_pose(frame, pose)
+        return Rendered(frames, [ms for _, ms in timeline])
+    # scrolling text sets the frames; Clawd's pose follows the elapsed time
+    cycle = sum(ms for _, ms in timeline)
+    frames, elapsed = [], 0
+    for frame, duration in zip(base.frames, base.durations, strict=True):
+        at, frame = elapsed % cycle, frame.copy()
+        for pose, ms in timeline:
+            if at < ms:
+                _paste_pose(frame, pose)
+                break
+            at -= ms
+        frames.append(frame)
+        elapsed += duration
+    return Rendered(frames, base.durations, scrolls=True)
+
+
+def attention_pull(old: Image.Image, final: Image.Image) -> Rendered:
+    """Clawd walks in from the right and pulls the alert behind him over the old page."""
+    w, h = final.size
+    step = 2
+    frames = []
+    for k, x in enumerate(range(w - step, 0, -step)):
+        frame = old.copy()
+        frame.paste(final.crop((0, 0, w - x, h)), (x, 0))
+        _paste_pose(frame, _clawd_pose(step=bool((k // 2) % 2)), x)
+        frames.append(frame)
+    return Rendered([*frames, final.copy()], [50] * len(frames) + [transitions.HOLD_MS])
+
+
+GREEN, RED, AMBER, GREY = (0, 200, 60), (230, 20, 20), (255, 190, 0), (110, 110, 120)
+
+
+def render_timer(title: str, color: tuple[int, int, int], icon: str, seconds: float, running: bool, down: bool,
+                 total: float | None, w: int, h: int, now: datetime) -> Rendered:
+    """A timer as a GIF counting the next seconds on the panel itself; sent again when it runs out."""
+    count = max(1, min(60, int(seconds) if down else 60)) if running else 1
+    frames = []
+    for i in range(count):
+        s = seconds - i if down else seconds + i
+        progress = 100 * s / total if total else None
+        screen = Screen([Line(title, color), Line(work.clock_text(s), render.WHITE)],
+                        icon=icons.builtin_icon(icon), progress=progress, progress_color=color)
+        frames.append(render.render_screen(screen, w, h).frames[0])
+    if count == 1:
+        return Rendered(frames)
+    return Rendered(frames, [1000] * count, valid_until=now + timedelta(seconds=count))
+
+
+def _number_screen(value: int | None, icon: str) -> Screen:
+    """A count next to an icon: dim at zero, amber otherwise."""
+    if value is None:
+        return Screen([Line("?", GREY)], icon=icons.builtin_icon(icon))
+    return Screen([Line(str(value), AMBER if value else GREY)], icon=icons.builtin_icon(icon))
+
+
+def github_screen(state: work.GitHubState | None, show: str) -> Screen:
+    if state is None:
+        return Screen([Line("GitHub", GREY), Line("...", GREY)], icon=icons.builtin_icon("info"), big=False)
+    if state.error:
+        return Screen([Line(state.error, RED)], icon=icons.builtin_icon("warning"), big=False)
+    if show == "prs":
+        return Screen([Line(f"{state.prs} PRs", AMBER if state.prs else GREY), Line("to review", render.WHITE)],
+                      icon=icons.builtin_icon("mail"))
+    if show == "issues":
+        return Screen([Line(f"{state.issues} open", AMBER if state.issues else GREY), Line("issues", render.WHITE)],
+                      icon=icons.builtin_icon("info"))
+    label, color, icon = {"passing": ("passing", GREEN, "check"), "running": ("running", AMBER, "clock"),
+                          "failing": ("FAILING", RED, "warning")}.get(state.ci, ("no runs", GREY, "info"))
+    repo = state.ci_repo.rsplit("/", 1)[-1]
+    return Screen([Line(label, color), Line(repo or "CI", render.WHITE)], icon=icons.builtin_icon(icon))
+
+
+def monitor_screen(monitors: tuple[work.Monitor, ...] | None) -> Screen:
+    icon = icons.builtin_icon("wifi")
+    if not monitors:
+        return Screen([Line("No URLs", GREY)], icon=icon, big=False)
+    down = [m.name for m in monitors if not m.up]
+    if down:
+        return Screen([Line(f"{len(down)} DOWN", RED), Line(down[0], render.WHITE)], icon=icon)
+    return Screen([Line(f"{len(monitors)}/{len(monitors)} up", GREEN)], icon=icon, big=False)
+
+
+def system_screen(stats: work.SystemStats | None, show: str) -> Screen:
+    if stats is None:
+        return Screen([Line("PC ...", GREY)], icon=icons.builtin_icon("info"), big=False)
+    if show == "battery":
+        if stats.battery is None:
+            return Screen([Line("No", GREY), Line("battery", GREY)], icon=icons.builtin_icon("battery"))
+        color = GREEN if stats.charging or stats.battery > 30 else RED
+        return Screen([Line(f"{stats.battery}%", color)], icon=icons.builtin_icon("battery"),
+                      progress=stats.battery, progress_color=color)
+    return Screen([Line(f"CPU {stats.cpu}%", usage_color(stats.cpu)), Line(f"RAM {stats.ram}%", usage_color(stats.ram))])
+
+
+def countdown_screen(page: dict, now: datetime) -> Screen:
+    label = page.get("label") or "Countdown"
+    icon = load_icon(page.get("icon"))
+    left = work.countdown_text(page.get("date", ""), page.get("time", "17:00"), now)
+    if left is None:  # reached: celebrate
+        return Screen([Line(label, render.WHITE), Line("Now!", render.WHITE)], icon=icon, effect="rainbow")
+    return Screen([Line(label, AMBER), Line(left, render.WHITE)], icon=icon)
+
+
+def on_air_screen() -> Screen:
+    return Screen([Line("ON AIR", render.WHITE)], background=(190, 0, 0))
 
 
 def animate_icon(screen: Screen, w: int, h: int) -> Rendered:
@@ -397,8 +579,54 @@ def animate_icon(screen: Screen, w: int, h: int) -> Rendered:
     return Rendered(frames, durations)
 
 
+def _simple_screen(t: str, page: dict, ctx: Context, now: datetime) -> Screen:
+    if t == "countdown":
+        return countdown_screen(page, now)
+    if t == "mail":
+        return _number_screen(ctx.mail, "mail")
+    if t == "teams_chat":
+        return _number_screen(ctx.teams_unread, "bell")
+    if t == "day":
+        icon = icons.builtin_icon("calendar")
+        if ctx.day is None:
+            return Screen([Line("No", GREY), Line("calendar", GREY)], icon=icon)
+        return Screen([Line(f"{ctx.day.left} left", AMBER if ctx.day.left else GREEN),
+                       Line("Full day" if ctx.day.share >= 100 else f"{ctx.day.share}% busy", render.WHITE)], icon=icon)
+    if t == "github":
+        return github_screen(ctx.github, page.get("show", "actions"))
+    if t == "monitor":
+        return monitor_screen(ctx.monitors)
+    if t == "system":
+        return system_screen(ctx.system, page.get("show", "cpu_ram"))
+    if t == "sessions":
+        active, waiting = ctx.sessions
+        return Screen([Line(f"{active} active", CLAUDE_ORANGE if active else GREY),
+                       Line(f"{waiting} waiting", AMBER if waiting else GREY)], icon=clawd_icon())
+    return Screen([Line(ctx.team_message or "No message", AMBER if ctx.team_message else GREY)],
+                  icon=icons.builtin_icon("info"), big=False)
+
+
 def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rendered | Native:
     t = page["type"]
+    if t == "attention":
+        summary = ctx.attention or claude_hooks.Summary("idle", "Claude", 1)
+        return render_attention(summary, w, h)
+    if t == "alert":
+        return render_note(page.get("title", ""), tuple(page.get("rgb", AMBER)), page.get("text", " "), w, h)
+    if t == "on_air":
+        return render.render_screen(on_air_screen(), w, h)
+    if t == "focus":
+        phase, left, length = ctx.focus or ("", 0.0, 0.0)
+        if not phase:
+            return render.render_screen(Screen([Line("Focus", GREY), Line("off", GREY)], icon=icons.builtin_icon("clock")), w, h)
+        focusing = phase == "focus"
+        return render_timer("Focus" if focusing else "Break", AMBER if focusing else GREEN, "clock" if focusing else "coffee",
+                            left, True, True, length, w, h, now)
+    if t == "stopwatch":
+        elapsed, running, label = ctx.stopwatch
+        return render_timer(label[:9] or "Time", GREEN if running else GREY, "clock", elapsed, running, False, None, w, h, now)
+    if t in ("countdown", "mail", "teams_chat", "day", "github", "monitor", "system", "sessions", "team"):
+        return render.render_screen(_simple_screen(t, page, ctx, now), w, h)
     if t == "native_clock":
         return Native(proto.set_clock_mode(int(page.get("style", 1)), now, bool(page.get("show_date", True))),
                       f"Built-in clock {page.get('style', 1)}")
@@ -434,7 +662,7 @@ def render_page(page: dict, ctx: Context, w: int, h: int, now: datetime) -> Rend
         if page.get("logo") == "clawd" and page.get("animate", True):
             return animate_icon(screen, w, h)
     elif t == "calendar":
-        screen = calendar_screen(ctx.meeting, now, remind=bool(page.get("remind")))
+        screen = calendar_screen(ctx.meeting, now, bool(page.get("remind")), ctx.calendar_show, ctx.calendar_icon)
     else:
         screen = Screen([Line("?")])
     return render.render_screen(screen, w, h)
@@ -462,6 +690,22 @@ def signature(page: dict, ctx: Context, now: datetime) -> tuple:
     if t == "claude":
         u = ctx.claude
         return base + ((u.session, u.week, u.error) if u else None,)
+    if t == "attention":
+        return base + (ctx.attention,)
+    if t == "focus":
+        return base + ((ctx.focus or ("",))[0],)
+    if t == "stopwatch":
+        elapsed, running, label = ctx.stopwatch
+        return base + (running, label, None if running else int(elapsed))
+    live = {"mail": ctx.mail, "teams_chat": ctx.teams_unread, "day": ctx.day, "github": ctx.github,
+            "monitor": ctx.monitors, "sessions": ctx.sessions, "team": ctx.team_message}
+    if t in live:
+        return base + (live[t],)
+    if t == "system":
+        s = ctx.system
+        return base + ((s.cpu // 5, s.ram // 5, s.battery, s.charging) if s else None,)  # no resend for small changes
+    if t == "countdown":
+        return base + (now.strftime("%Y%m%d%H%M"),)
     if t == "calendar":  # the minute matters for the countdown and for "running"
         return base + (ctx.meeting, now.strftime("%Y%m%d%H%M"))
     return base

@@ -96,3 +96,11 @@ def test_outlook_items_are_filtered_like_graph():
              _item("Ganztag", 0, 1440, allday=True), _item("Vorbei", -90), _item("Daily", 30), _item("Später", 90)]
     m = calendars.next_from_outlook_items(items, NOW)
     assert m.subject == "Daily"
+
+
+def test_ics_and_outlook_also_know_the_busy_block():
+    items = [_item("A", -10, 30), _item("B", 20, 30), _item("C", 120)]
+    m = calendars.next_from_outlook_items(items, NOW)
+    assert m.subject == "A" and m.busy_end == NOW + timedelta(minutes=50)
+    ics = ICS.replace("DTEND;TZID=W. Europe Standard Time:20261020T104500", "DTEND;TZID=W. Europe Standard Time:20261020T110000")
+    assert calendars.next_from_ics(ics, NOW).busy_end == datetime(2026, 11, 3, 10, 0, tzinfo=timezone.utc)

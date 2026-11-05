@@ -16,9 +16,10 @@ from PySide6.QtWidgets import (
     QSlider, QSpinBox, QStackedWidget, QSystemTrayIcon, QTimeEdit, QToolButton, QVBoxLayout, QWidget,
 )
 
+import secrets
 from concurrent.futures import ThreadPoolExecutor
 
-from . import __version__, autostart, calendars, config, pages, sources, theme, transitions, updater
+from . import __version__, autostart, calendars, claude_hooks, config, gui_work, pages, sources, theme, transitions, updater
 from .core import effects, icons
 from .engine import Engine, Status
 
@@ -32,6 +33,8 @@ ORIENTATION_NAMES = {"landscape": "Normal", "upside_down": "Upside down",
                      "portrait_left": "Portrait (left end up)", "portrait_right": "Portrait (right end up)"}
 CLAUDE_SHOW = {"both": "Session (5 h) + week", "session": "Session (5 h) only, with bar",
                "week": "Week only, with bar"}
+CALENDAR_SHOW = {"details": "Title and time", "time": "Time only (no titles)",
+                 "free_busy": "Free till / Busy till"}
 PREVIEW_WIDTH = 640
 
 
@@ -249,6 +252,7 @@ class PageEditor(QWidget):
             logo.currentIndexChanged.connect(
                 lambda _: (self._set("logo", logo.currentData()), animate.setVisible(logo.currentData() == "clawd")))
             self.form.addRow("", animate)
+        gui_work.page_editor_rows(self, page)
 
     def _browse_image(self, field: QLineEdit) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Choose an image", "", "Images (*.png *.gif *.jpg *.jpeg *.bmp *.webp)")
@@ -270,7 +274,7 @@ def page_title(page: dict) -> str:
     return f"{title}  ({page.get('duration', 10)} s)"
 
 
-class MainWindow(QMainWindow):
+class MainWindow(gui_work.WorkSections, QMainWindow):
     def __init__(self, cfg: dict, engine: Engine, bridge: Bridge) -> None:
         super().__init__()
         self.cfg = cfg
@@ -320,6 +324,7 @@ class MainWindow(QMainWindow):
         sections = [
             ("Show now", "\ue768", scrolled(self._build_now_tab())),
             ("Pages", "\ue8fd", self._build_pages_tab()),
+            ("Work", "\ue823", scrolled(self._build_work_tab())),
             ("Connections", "\ue71b", scrolled(self._build_live_tab())),
             ("Settings", "\ue713", scrolled(self._build_settings_tab())),
         ]
@@ -373,7 +378,12 @@ class MainWindow(QMainWindow):
         self.power.setChecked(self.cfg.get("power", True))
         self.power.setText("On" if self.power.isChecked() else "Off")
         self.power.toggled.connect(lambda v: (self.power.setText("On" if v else "Off"), self._set_cfg("power", v)))
+        self.hold_button = QPushButton("Back to rotation", objectName="primary")
+        self.hold_button.setToolTip("Takes down the door sign or message that is holding the panel")
+        self.hold_button.clicked.connect(self.engine.clear_message)
+        self.hold_button.hide()
         row.addWidget(self.showing, 1)
+        row.addWidget(self.hold_button)
         row.addWidget(nxt)
         row.addSpacing(12)
         row.addWidget(sun)
@@ -670,11 +680,98 @@ class MainWindow(QMainWindow):
         hint.setWordWrap(True)
         form.addRow(hint)
         lay.addWidget(box)
+        lay.addWidget(self._build_attention_box())
         lay.addWidget(self._build_calendar_box())
+        lay.addWidget(self._build_github_box())
+        lay.addWidget(self._build_monitor_box())
+        lay.addWidget(self._build_team_box())
+        lay.addWidget(self._build_api_box())
         lay.addStretch(1)
         return w
 
     # --- tab: calendar --------------------------------------------------------------------------
+
+    def _build_attention_box(self) -> QGroupBox:
+        cfg = self.cfg["claude"]["attention"]
+        box = QGroupBox("Claude sessions")
+        form = QFormLayout(box)
+        self.attention_cb = QCheckBox("Alert on the panel when a Claude Code session needs attention")
+        self.attention_cb.setChecked(bool(cfg.get("enabled")))
+        self.attention_cb.toggled.connect(self._set_attention)
+        form.addRow("", self.attention_cb)
+        kinds = QHBoxLayout()
+        for key, label, tip in (("input", "Needs a decision", "Waits for a permission or an answer"),
+                                ("idle", "Finished", "Done and waiting for you for about a minute"),
+                                ("error", "Error", "The turn ended with an API error")):
+            cb = QCheckBox(label)
+            cb.setToolTip(tip)
+            cb.setChecked(bool(cfg.get(key, True)))
+            cb.toggled.connect(lambda v, k=key: self._set_attention_option(k, v))
+            kinds.addWidget(cb)
+        kinds.addStretch(1)
+        form.addRow("Alert for", kinds)
+        row = QHBoxLayout()
+        seconds = QSpinBox()
+        seconds.setRange(3, 600)
+        seconds.setSuffix(" s")
+        seconds.setValue(int(cfg.get("seconds", 15)))
+        seconds.valueChanged.connect(lambda v: self._set_attention_option("seconds", v))
+        test = QPushButton("Send test alert")
+        test.clicked.connect(self._test_attention)
+        row.addWidget(seconds)
+        row.addWidget(test)
+        row.addStretch(1)
+        form.addRow("Show for", row)
+        self.attention_status = QLabel("Off", objectName="muted")
+        self.attention_status.setWordWrap(True)
+        form.addRow("Status", self.attention_status)
+        hint = QLabel("Clawd pulls the alert onto the panel; it stays in the rotation until the session goes on. "
+                      "Only the project folder name is used – no prompts or answers. Works for Claude Code on "
+                      "this PC (terminal and VS Code).", objectName="hint")
+        hint.setWordWrap(True)
+        form.addRow(hint)
+        return box
+
+    def _set_attention_option(self, key: str, value) -> None:
+        self.cfg["claude"]["attention"][key] = value
+        self._changed()
+
+    def _test_attention(self) -> None:
+        if not self.cfg["claude"]["attention"].get("enabled"):
+            self.attention_status.setText("Switch the alerts on first.")
+            return
+        self.engine.attention_test()
+
+    def _set_attention(self, on: bool) -> None:
+        cfg = self.cfg["claude"]["attention"]
+        try:
+            if on:
+                answer = QMessageBox.question(
+                    self, "Claude session alerts",
+                    "Pixel Panel will add hooks to Claude Code's settings:\n"
+                    f"{claude_hooks.SETTINGS_FILE}\n\n"
+                    "Claude Code then reports to this PC only (127.0.0.1) when a session needs you. Your other "
+                    "settings stay as they are and a backup is made. Switching this off removes the hooks again.")
+                if answer != QMessageBox.StandardButton.Yes:
+                    self._revert_attention(False)
+                    return
+                cfg["token"] = cfg.get("token") or secrets.token_urlsafe(24)
+                claude_hooks.install(claude_hooks.SETTINGS_FILE, f"{claude_hooks.URL_BASE}/{cfg['token']}")
+            else:
+                claude_hooks.uninstall(claude_hooks.SETTINGS_FILE)
+        except claude_hooks.HookError as err:
+            log.warning("Claude hooks: %s", err)
+            QMessageBox.warning(self, "Claude session alerts", str(err))
+            self._revert_attention(not on)
+            return
+        cfg["enabled"] = on
+        self.attention_status.setText("Listening – no session needs you right now" if on else "Off")
+        self._changed()
+
+    def _revert_attention(self, value: bool) -> None:
+        self.attention_cb.blockSignals(True)
+        self.attention_cb.setChecked(value)
+        self.attention_cb.blockSignals(False)
 
     def _build_calendar_box(self) -> QGroupBox:
         cal = self.cfg["calendar"]
@@ -754,6 +851,16 @@ class MainWindow(QMainWindow):
         remind.setValue(int(cal.get("remind_minutes", 5)))
         remind.valueChanged.connect(lambda v: self._set_sub("calendar", "remind_minutes", v))
         form.addRow("Reminder", remind)
+        show = QComboBox()
+        for key, label in CALENDAR_SHOW.items():
+            show.addItem(label, key)
+        show.setCurrentIndex(max(0, show.findData(cal.get("show", "details"))))
+        show.currentIndexChanged.connect(lambda _: self._set_sub("calendar", "show", show.currentData()))
+        form.addRow("Show on the panel", show)
+        cal_icon = QCheckBox("Show the calendar icon (off: more room, bigger time)")
+        cal_icon.setChecked(bool(cal.get("icon", True)))
+        cal_icon.toggled.connect(lambda v: self._set_sub("calendar", "icon", v))
+        form.addRow("", cal_icon)
         hint = QLabel("Shortly before a meeting the reminder shows a countdown (in 4 min); it takes priority over "
                       "the status light and the rotation. Add the Next meeting page under Pages.",
                       objectName="hint")
@@ -787,6 +894,8 @@ class MainWindow(QMainWindow):
         w = QWidget()
         lay = QVBoxLayout(w)
         lay.addWidget(self._build_panel_settings())
+        lay.addWidget(self._build_profile_box())
+        lay.addWidget(self._build_hotkey_box())
         night = self.cfg["night"]
         box = QGroupBox("Night mode")
         form = QFormLayout(box)
@@ -805,6 +914,7 @@ class MainWindow(QMainWindow):
         nb.setValue(int(night.get("brightness", 5)))
         nb.valueChanged.connect(lambda v: self._set_sub("night", "brightness", v))
         form.addRow("Night brightness", nb)
+        form.addRow("", self._night_off_check())
         lay.addWidget(box)
 
         box = QGroupBox("Weather")
@@ -937,6 +1047,7 @@ class MainWindow(QMainWindow):
     # --- engine callbacks ------------------------------------------------------------------------
 
     def _on_status(self, st: Status) -> None:
+        self._on_work_status(st)
         self.conn_label.setText(f"●  {st.connection}")
         self.conn_label.setProperty("ok", st.connected)
         self.conn_label.style().polish(self.conn_label)
@@ -960,6 +1071,8 @@ class MainWindow(QMainWindow):
                                     f"Week: {fmt(c.week, c.week_reset)}" + (f"\nPlan: {c.plan}" if c.plan else ""))
         if st.calendar:
             self.cal_status.setText(st.calendar)
+        if st.attention:
+            self.attention_status.setText(st.attention)
         m = st.meeting
         if m is None:
             self.cal_next.setText("–")
@@ -1022,6 +1135,7 @@ class MainWindow(QMainWindow):
         tray_light.toggled.connect(self.light_cb.setChecked)
         self.light_cb.toggled.connect(tray_light.setChecked)
         menu.addAction(tray_light)
+        self._extend_tray(menu)
         menu.addSeparator()
         menu.addAction("Quit", self.quit)
         self.tray.setContextMenu(menu)
@@ -1140,6 +1254,7 @@ class MainWindow(QMainWindow):
         self._quitting = True
         self._save_now()
         self.tray.hide()
+        self._hotkeys.unregister()
         self.engine.stop()
         QApplication.quit()
 
@@ -1159,6 +1274,12 @@ def run(start_hidden: bool = False) -> int:
         QMessageBox.information(None, "Pixel Panel", "Pixel Panel is already running (tray icon).")
         return 0
 
+    attention = config.load()["claude"]["attention"]
+    if attention.get("enabled") and attention.get("token") and claude_hooks.is_installed():
+        try:  # a new version may listen to more events
+            claude_hooks.install(claude_hooks.SETTINGS_FILE, f"{claude_hooks.URL_BASE}/{attention['token']}")
+        except claude_hooks.HookError as err:
+            log.warning("Claude hooks: %s", err)
     updater.cleanup()  # remove the previous version (PixelPanel.exe.old) after an update
     cfg = config.load()
     bridge = Bridge()

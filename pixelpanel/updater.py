@@ -36,7 +36,7 @@ class UpdateError(Exception):
 
 def parse_version(tag: str) -> tuple[int, ...]:
     nums = re.findall(r"\d+", tag or "")
-    return tuple(int(n) for n in nums[:3]) if nums else (0,)
+    return tuple(int(n) for n in nums) if nums else (0,)
 
 
 @dataclass

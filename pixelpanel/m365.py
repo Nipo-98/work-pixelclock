@@ -12,7 +12,7 @@ import logging
 import urllib.error
 import urllib.parse
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 
 from .config import APP_DIR
@@ -31,6 +31,11 @@ class Meeting:
     start: datetime  # aware
     end: datetime
     location: str
+    busy_until: datetime | None = None  # end of the block of meetings without a gap, from this one on
+
+    @property
+    def busy_end(self) -> datetime:
+        return self.busy_until or self.end
 
     def running(self, now: datetime) -> bool:
         return self.start <= now < self.end
@@ -42,8 +47,25 @@ def _parse(value: dict) -> datetime:
     return datetime.fromisoformat(raw).replace(tzinfo=timezone.utc)
 
 
-def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
-    """The running or next real meeting: not cancelled, declined, all-day or shown as free."""
+def start_of_day(now: datetime) -> datetime:
+    return now.astimezone().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def pick_next(meetings: list[Meeting], now: datetime) -> Meeting | None:
+    """The running or next meeting, knowing until when the meetings after it follow without a gap."""
+    upcoming = sorted((m for m in meetings if m.end > now), key=lambda m: m.start)
+    if not upcoming:
+        return None
+    end = upcoming[0].end
+    for meeting in upcoming[1:]:
+        if meeting.start > end:
+            break
+        end = max(end, meeting.end)
+    return replace(upcoming[0], busy_until=end)
+
+
+def meetings_from_events(events: list[dict]) -> list[Meeting]:
+    """The real meetings: not cancelled, declined, all-day or shown as free."""
     found = []
     for e in events:
         if e.get("isCancelled") or e.get("isAllDay") or e.get("showAs") == "free":
@@ -54,11 +76,13 @@ def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
             start, end = _parse(e["start"]), _parse(e["end"])
         except (KeyError, ValueError):
             continue
-        if end <= now:
-            continue
         subject = (e.get("subject") or "Meeting").strip()
         found.append(Meeting(subject, start, end, ((e.get("location") or {}).get("displayName") or "").strip()))
-    return min(found, key=lambda m: m.start) if found else None
+    return found
+
+
+def next_meeting(events: list[dict], now: datetime) -> Meeting | None:
+    return pick_next(meetings_from_events(events), now)
 
 
 class Calendar:
@@ -96,13 +120,13 @@ class Calendar:
         for account in self.app.get_accounts():
             self.app.remove_account(account)
 
-    def fetch(self, now: datetime | None = None) -> Meeting | None:
+    def fetch(self, now: datetime | None = None) -> list[Meeting]:
         token = self._token()
         if token is None:
             raise PermissionError("Not signed in")
         now = now or datetime.now(timezone.utc)
         q = urllib.parse.urlencode({
-            "startDateTime": (now - timedelta(hours=4)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "startDateTime": start_of_day(now).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "endDateTime": (now + LOOKAHEAD).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "$select": "subject,start,end,location,isAllDay,isCancelled,showAs,responseStatus",
             "$orderby": "start/dateTime",
@@ -112,4 +136,4 @@ class Calendar:
             "Authorization": f"Bearer {token}", "Prefer": 'outlook.timezone="UTC"'})
         with urllib.request.urlopen(req, timeout=20) as resp:
             events = json.load(resp).get("value", [])
-        return next_meeting(events, now)
+        return meetings_from_events(events)

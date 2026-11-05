@@ -47,6 +47,16 @@ def teams_label(state: str | None, short: bool = False) -> tuple[str, tuple[int,
     return (short_label if short else label, color)
 
 
+UNREAD_LINE_RE = re.compile(r"BroadcastGlobalState: New Global State Event[^\n]*")
+UNREAD_RE = re.compile(r"unread notification count: (\d+)")
+
+
+def last_unread(text: str) -> int | None:
+    """Unread count of the last global state in a chunk of Teams log text (summed over all accounts)."""
+    lines = UNREAD_LINE_RE.findall(text)
+    return sum(int(n) for n in UNREAD_RE.findall(lines[-1])) if lines else None
+
+
 def last_presence(text: str) -> str | None:
     """Last availability in a chunk of Teams log text."""
     found = PRESENCE_RE.findall(text)
@@ -60,6 +70,7 @@ class TeamsWatcher:
     def __init__(self, log_dir: Path = TEAMS_LOG_DIR) -> None:
         self.log_dir = log_dir
         self.state: str | None = None
+        self.unread: int | None = None
         self._file: Path | None = None
         self._pos = 0
 
@@ -80,7 +91,10 @@ class TeamsWatcher:
         if self._file is None:
             # first run: newest file that mentions a presence (logs rotate, the newest may be empty)
             for path in logs[:5]:
-                state = last_presence(_read(path, 0)[0])
+                text = _read(path, 0)[0]
+                if self.unread is None:
+                    self.unread = last_unread(text)
+                state = last_presence(text)
                 if state:
                     self.state = state
                     break
@@ -91,6 +105,9 @@ class TeamsWatcher:
         text, self._pos = _read(newest, self._pos)
         if state := last_presence(text):
             self.state = state
+        unread = last_unread(text)
+        if unread is not None:
+            self.unread = unread
         return self.state
 
 

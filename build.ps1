@@ -16,7 +16,7 @@ if (Get-Process PixelPanel -ErrorAction SilentlyContinue) {
 & $py -c "from PIL import Image; from pixelpanel.core import icons; h = icons.builtin_icon('heart'); img = Image.new('RGBA', (16, 16), (0, 0, 0, 0)); img.paste(Image.new('RGBA', (16, 12), (20, 20, 28, 255)), (0, 2)); img.paste(h, (4, 4), h); img.resize((256, 256), Image.Resampling.NEAREST).save('icon.ico', sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (256, 256)])"
 
 & $py -m PyInstaller --noconfirm --clean --onefile --windowed --name PixelPanel --icon icon.ico `
-    --collect-submodules bleak --collect-submodules winrt `
+    --collect-submodules bleak --collect-submodules winrt --hidden-import win32timezone `
     --exclude-module tkinter --exclude-module pytest `
     run.py
 if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed (exit code $LASTEXITCODE)." }

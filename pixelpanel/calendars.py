@@ -12,7 +12,7 @@ import urllib.request
 import winreg
 from datetime import datetime, timedelta, timezone
 
-from .m365 import LOOKAHEAD, Meeting
+from .m365 import LOOKAHEAD, Meeting, pick_next, start_of_day
 
 log = logging.getLogger(__name__)
 
@@ -24,6 +24,7 @@ PROVIDERS: dict[str, str] = {
 
 # Outlook enums
 OL_FOLDER_CALENDAR = 9
+OL_FOLDER_INBOX = 6
 OL_FREE = 0
 OL_MEETING_CANCELED = (5, 7)
 OL_RESPONSE_DECLINED = 4
@@ -34,11 +35,6 @@ def _aware(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.astimezone()
 
 
-def _pick(candidates: list[Meeting], now: datetime) -> Meeting | None:
-    upcoming = [m for m in candidates if m.end > now]
-    return min(upcoming, key=lambda m: m.start) if upcoming else None
-
-
 # --- ICS -----------------------------------------------------------------------------------------
 
 def ics_http_url(url: str) -> str:
@@ -46,13 +42,13 @@ def ics_http_url(url: str) -> str:
     return "https://" + url[len("webcal://"):] if url.lower().startswith("webcal://") else url
 
 
-def next_from_ics(text: str, now: datetime) -> Meeting | None:
+def meetings_from_ics(text: str, now: datetime) -> list[Meeting]:
     import icalendar
     import recurring_ical_events
 
     cal = icalendar.Calendar.from_ical(text)
     found = []
-    for ev in recurring_ical_events.of(cal).between(now - timedelta(hours=4), now + LOOKAHEAD):
+    for ev in recurring_ical_events.of(cal).between(start_of_day(now), now + LOOKAHEAD):
         start, end = ev.decoded("DTSTART"), ev.decoded("DTEND") if "DTEND" in ev else None
         if not isinstance(start, datetime):  # all-day: a date without time
             continue
@@ -64,14 +60,18 @@ def next_from_ics(text: str, now: datetime) -> Meeting | None:
         start = _aware(start)
         end = _aware(end) if isinstance(end, datetime) else start + timedelta(minutes=30)
         found.append(Meeting(str(ev.get("SUMMARY", "Meeting")).strip(), start, end, str(ev.get("LOCATION", "")).strip()))
-    return _pick(found, now)
+    return found
 
 
-def fetch_ics(url: str, now: datetime | None = None) -> Meeting | None:
+def next_from_ics(text: str, now: datetime) -> Meeting | None:
+    return pick_next(meetings_from_ics(text, now), now)
+
+
+def fetch_ics(url: str, now: datetime | None = None) -> list[Meeting]:
     req = urllib.request.Request(ics_http_url(url), headers={"User-Agent": "PixelPanel/1.0"})
     with urllib.request.urlopen(req, timeout=20) as resp:
         text = resp.read().decode("utf-8", "replace")
-    return next_from_ics(text, now or datetime.now(timezone.utc))
+    return meetings_from_ics(text, now or datetime.now(timezone.utc))
 
 
 # --- classic Outlook (COM) -----------------------------------------------------------------------
@@ -108,7 +108,7 @@ def com_time(dt: datetime) -> datetime:
     return dt.replace(tzinfo=None).astimezone()
 
 
-def next_from_outlook_items(items, now: datetime) -> Meeting | None:
+def meetings_from_outlook_items(items) -> list[Meeting]:
     found = []
     for it in items:
         try:
@@ -120,32 +120,50 @@ def next_from_outlook_items(items, now: datetime) -> Meeting | None:
         except AttributeError:
             continue
         found.append(Meeting(str(it.Subject or "Meeting").strip(), start, end, str(it.Location or "").strip()))
-    return _pick(found, now)
+    return found
 
 
-def fetch_outlook(now: datetime | None = None) -> Meeting | None:
-    """Read the default calendar of the classic Outlook profile (starts Outlook hidden if needed)."""
+def next_from_outlook_items(items, now: datetime) -> Meeting | None:
+    return pick_next(meetings_from_outlook_items(items), now)
+
+
+def _outlook_folder(number: int):
+    """A default folder of the classic Outlook profile (starts Outlook hidden if needed)."""
     import pythoncom
     import win32com.client
+
+    for _ in range(OUTLOOK_START_WAIT):  # a freshly started Outlook needs a moment until it answers
+        try:
+            return win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI").GetDefaultFolder(number)
+        except (AttributeError, pythoncom.com_error):
+            time.sleep(1)
+    raise RuntimeError("Outlook is not responding")
+
+
+def outlook_unread() -> int:
+    """Unread mails in the inbox of the classic Outlook profile."""
+    import pythoncom
+
+    pythoncom.CoInitialize()
+    try:
+        return int(_outlook_folder(OL_FOLDER_INBOX).UnReadItemCount)
+    finally:
+        pythoncom.CoUninitialize()
+
+
+def fetch_outlook(now: datetime | None = None) -> list[Meeting]:
+    """Today's and the coming meetings from the classic Outlook profile."""
+    import pythoncom
 
     now = now or datetime.now(timezone.utc)
     pythoncom.CoInitialize()
     try:
-        items = None
-        for _ in range(OUTLOOK_START_WAIT):  # a freshly started Outlook needs a moment until it answers
-            try:
-                ns = win32com.client.Dispatch("Outlook.Application").GetNamespace("MAPI")
-                items = ns.GetDefaultFolder(OL_FOLDER_CALENDAR).Items
-                break
-            except (AttributeError, pythoncom.com_error):
-                time.sleep(1)
-        if items is None:
-            raise RuntimeError("Outlook is not responding")
+        items = _outlook_folder(OL_FOLDER_CALENDAR).Items
         items.IncludeRecurrences = True
         items.Sort("[Start]")
         local_now = now.astimezone().replace(tzinfo=None)
         fmt = _windows_formats()
-        flt = (f"[End] >= '{outlook_date(local_now - timedelta(minutes=1), *fmt)}' AND "
+        flt = (f"[End] >= '{outlook_date(start_of_day(now).replace(tzinfo=None), *fmt)}' AND "
                f"[Start] <= '{outlook_date(local_now + LOOKAHEAD, *fmt)}'")
         restricted = items.Restrict(flt)
         found = []
@@ -153,6 +171,6 @@ def fetch_outlook(now: datetime | None = None) -> Meeting | None:
         while item is not None and len(found) < 50:  # with recurrences Count is unreliable: iterate
             found.append(item)
             item = restricted.GetNext()
-        return next_from_outlook_items(found, now)
+        return meetings_from_outlook_items(found)
     finally:
         pythoncom.CoUninitialize()
