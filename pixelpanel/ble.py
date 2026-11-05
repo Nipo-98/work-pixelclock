@@ -16,6 +16,9 @@ log = logging.getLogger(__name__)
 ACK_TIMEOUT = 8.0
 COMMAND_ACK_TIMEOUT = 3.0
 INFO_TIMEOUT = 5.0
+WRITE_TIMEOUT = 10.0  # a Bluetooth step that never returns must not stop everything
+CONNECT_TIMEOUT = 40.0
+DISCONNECT_TIMEOUT = 5.0
 FAST_SYNC_EVERY = 8  # every 8th chunk of a fast upload is an acknowledged write (back pressure)
 FAST_ACK_TIMEOUT = 3.0
 
@@ -72,11 +75,14 @@ class PanelClient:
                 return
             await self._disconnect()
             client = BleakClient(address, timeout=20, disconnected_callback=self._disconnected)
-            await client.connect()
             try:
-                await client.start_notify(proto.NOTIFY_UUID, self._notify)
+                await asyncio.wait_for(client.connect(), CONNECT_TIMEOUT)
+                await asyncio.wait_for(client.start_notify(proto.NOTIFY_UUID, self._notify), WRITE_TIMEOUT)
             except Exception:
-                await client.disconnect()
+                try:
+                    await asyncio.wait_for(client.disconnect(), DISCONNECT_TIMEOUT)
+                except Exception as err:  # noqa: BLE001 - the first error is the one that counts
+                    log.debug("disconnect after failed connect: %s", err)
                 raise
             self._client = client
             self.address = address
@@ -91,7 +97,7 @@ class PanelClient:
         if self._client is not None:
             client, self._client = self._client, None
             try:
-                await client.disconnect()
+                await asyncio.wait_for(client.disconnect(), DISCONNECT_TIMEOUT)
             except Exception as err:  # noqa: BLE001
                 log.debug("disconnect: %s", err)
 
@@ -122,7 +128,7 @@ class PanelClient:
         chunks = list(proto.chunks(data, size))
         for i, chunk in enumerate(chunks):
             sync = not fast or i % FAST_SYNC_EVERY == FAST_SYNC_EVERY - 1 or i == len(chunks) - 1
-            await client.write_gatt_char(proto.WRITE_UUID, chunk, response=sync)
+            await asyncio.wait_for(client.write_gatt_char(proto.WRITE_UUID, chunk, response=sync), WRITE_TIMEOUT)
 
     async def _sync_time(self) -> None:
         self._info = asyncio.get_running_loop().create_future()

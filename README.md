@@ -224,14 +224,28 @@ The window's **X** only closes the window – the panel keeps being controlled. 
 
 All of these are off until you switch them on or tick their page, and only what is on gets fetched.
 
+**Who gets the panel**, from highest to lowest:
+
+1. Short notes from Clawd (Claude session alerts, build failed, break …)
+2. **On air**
+3. The stopwatch for 5 seconds when you start or stop it
+4. Your **door sign** or message from *Show now* or the local interface
+5. Meeting reminder
+6. **Focus timer**
+7. Teams status light
+8. Page rotation (a running timer is always part of it, even without a ticked page)
+
+The last thing you do wins: starting the focus timer or pressing **Next page** takes a door sign down. The line
+under the preview says what is showing, and **Back to rotation** appears while a sign or message holds the panel.
+
 **Under *Work***
 
 | Feature | What it does |
 |---|---|
-| **On air** | Red **ON AIR** while any app uses the microphone or camera (Teams, Zoom, browser …), read from Windows' privacy data. Windows only says "in use", not whether you are muted. |
+| **On air** | Red **ON AIR** while any app uses the microphone or camera (Teams, Zoom, browser …), read from Windows' privacy data; the app shows which one. Windows only says "in use", not whether you are muted. |
 | **Focus timer** | Countdown with a bar, then a break, with a note from Clawd at the end of each. Can take over the panel while it runs. Does not change your Teams status. |
-| **Stopwatch** | Time on a task with your own label; resets when the app restarts. |
-| **Door sign** | One click: *Do not disturb*, *Back soon*, *Come in* (also in the tray menu). |
+| **Stopwatch** | Time on a task with your own label. Shows up when started or stopped and stays in the rotation while it runs; resets when the app restarts. |
+| **Door sign** | One click: *Do not disturb*, *Back soon*, *Come in* (also in the tray menu). Stays until you take it down. |
 | **Break reminder** | After 90 minutes at the PC (adjustable); 5 minutes away counts as a break. |
 | **Claude limit warning** | Note at 80 % and 90 % of the session or week (adjustable), with the time it resets. |
 
@@ -400,7 +414,8 @@ To reset, quit the app and delete `config.json`.
 | **Calendar: "Outlook is not responding"** | Classic Outlook must be installed and have a profile; open it once manually. Otherwise use the ICS link. |
 | **Claude alerts don't appear** | Check *Connections › Claude sessions* (status line, **Send test alert**). Restart a session that was already open if it doesn't pick up the hooks. |
 | **"Pixel Panel is already running"** | An instance is already running – tray icon (maybe under ^). |
-| Anything else | Check `%APPDATA%\PixelPanel\pixelpanel.log`. |
+| **"The panel control does not respond"** | The cause and position are in the log. Restart the app; please report the log lines if it happens again. |
+| Anything else | Check `%APPDATA%\PixelPanel\pixelpanel.log` – errors of buttons and background work are written there too. |
 
 ---
 

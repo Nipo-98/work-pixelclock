@@ -8,8 +8,10 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import sys
 import threading
 import time
+import traceback
 import urllib.error
 from collections.abc import Callable
 from concurrent.futures import Future
@@ -30,7 +32,10 @@ RECONNECT_EVERY = 15.0
 TEAMS_EVERY = 2.0
 WEATHER_EVERY = 15 * 60
 CALENDAR_EVERY = 5 * 60
-FOCUS_PAGE = {"id": "_focus", "type": "focus"}
+FOCUS_PAGE = {"id": "_focus", "type": "focus", "duration": 8, "enabled": True, "label": "Focus timer"}
+STOPWATCH_PAGE = {"id": "_stopwatch", "type": "stopwatch", "duration": 8, "enabled": True, "label": "Stopwatch"}
+MESSAGE_LABEL = "Door sign / message"
+PEEK_SECONDS = 5.0  # the stopwatch shows up this long when it is started or stopped
 ON_AIR_PAGE = {"id": "_on_air", "type": "on_air"}
 NO_BARS = {"attention", "alert", "on_air"}  # pages that want the whole panel
 ATTENTION_TAKEOVER = {"id": "_attention", "type": "attention", "pull": True}
@@ -58,6 +63,7 @@ class Status:
     meeting: m365.Meeting | None = None
     calendar: str = ""  # account or problem, for the settings tab
     attention: str = ""  # state of the Claude session alerts, for the settings tab
+    on_air: str = ""
     github: str = ""
     monitors: str = ""
     team: str = ""
@@ -118,6 +124,10 @@ class Engine:
         self.stopwatch = work.Stopwatch()
         self._break = work.BreakTracker()
         self._limit = work.LimitWatch()
+        self._peek_until = 0.0
+        self._peek_seconds = PEEK_SECONDS
+        self.last_tick = time.monotonic()
+        self._reported_stuck = False
         self._alerts: list[tuple[dict, float]] = []
         self._alert: dict | None = None
         self._alert_until = 0.0
@@ -194,13 +204,31 @@ class Engine:
             self.focus.stop()
         else:
             self.focus.start(_clock(), int(self.config["focus"].get("minutes", 25)))
+            self._message = None  # the last action wins: starting the timer takes a door sign down
         self._shown = _Shown()
         self._wake()
 
     def stopwatch_toggle(self) -> None:
         self.stopwatch.toggle(_clock())
+        self._peek_until = _clock() + self._peek_seconds
         self._shown = _Shown()
         self._wake()
+
+    def report_if_stuck(self, seconds: float = 30) -> bool:
+        """The engine's loop should tick all the time; if not, write down where it hangs."""
+        stuck = time.monotonic() - self.last_tick > seconds
+        if stuck and not self._reported_stuck:
+            self._reported_stuck = True
+            frame = sys._current_frames().get(self._thread.ident)
+            where = "".join(traceback.format_stack(frame)[-6:]) if frame else "?"
+            tasks = []
+            if self._loop.is_running():
+                for task in asyncio.all_tasks(self._loop):
+                    tasks.extend(f"{f.f_code.co_name}:{f.f_lineno}" for f in task.get_stack(limit=8))
+            log.error("panel control stuck for %.0f s at:\n%s\ntasks: %s", time.monotonic() - self.last_tick, where, tasks)
+        elif not stuck:
+            self._reported_stuck = False
+        return stuck
 
     def stopwatch_reset(self) -> None:
         self.stopwatch.reset()
@@ -254,9 +282,10 @@ class Engine:
         wanted = {p["type"] for p in cfg["pages"] if p.get("enabled")}
         air = cfg.get("on_air") or {}
         if air.get("enabled"):
-            self._poll("on_air", 2, now_m, work.on_air, self._set_on_air, air.get("mic", True), air.get("camera", True))
-        elif self.ctx.on_air:
-            self.ctx.on_air = False
+            self._poll("on_air", 2, now_m, lambda: work.on_air_users(air.get("mic", True), air.get("camera", True)),
+                       self._set_on_air)
+        elif self.ctx.on_air or self.status.on_air:
+            self.ctx.on_air, self.status.on_air = False, ""
         if "system" in wanted:
             self._poll("system", 5, now_m, work.system_stats, self._set("system"))
         if "mail" in wanted:
@@ -296,10 +325,11 @@ class Engine:
             setattr(self.ctx, name, value)
         return apply
 
-    def _set_on_air(self, value: bool) -> None:
-        if value != self.ctx.on_air:
-            log.info("on air: %s", value)
-            self.ctx.on_air = value
+    def _set_on_air(self, users: list[str]) -> None:
+        self.status.on_air = f"In use by: {', '.join(users)}" if users else "Not in use"
+        if bool(users) != self.ctx.on_air:
+            log.info("on air: %s", users)
+            self.ctx.on_air = bool(users)
 
     def _set_github(self, state: work.GitHubState) -> None:
         old, self.ctx.github = self.ctx.github, state
@@ -405,6 +435,8 @@ class Engine:
         self._wake()
 
     def next_page(self) -> None:
+        self._message = None  # the last action wins: going on takes a door sign down
+        self._shown = _Shown()
         self._advance = True
         self._wake()
 
@@ -508,6 +540,7 @@ class Engine:
         return f"{s.count} session(s) waiting, latest: {s.project} ({s.kind})"
 
     async def _tick(self) -> None:
+        self.last_tick = time.monotonic()
         now_m = _clock()
         if self.tracker.purge(now_m):
             self.ctx.attention = self.tracker.summary()
@@ -663,16 +696,16 @@ class Engine:
     def _rotation(self, cfg: dict) -> list[dict]:
         now = datetime.now()
         pages_on = [p for p in cfg["pages"] if p.get("enabled") and work.in_schedule(p.get("schedule"), now)]
+        types = {p["type"] for p in pages_on}
+        if self.stopwatch.running and "stopwatch" not in types:  # a running timer never hides
+            pages_on = [*pages_on, STOPWATCH_PAGE]
+        if self.focus.phase and "focus" not in types:
+            pages_on = [*pages_on, FOCUS_PAGE]
         return [*pages_on, ATTENTION_PAGE] if self.ctx.attention is not None else pages_on
 
     def _choose(self, cfg: dict, now_m: float) -> tuple[dict | None, str, bool]:
-        msg = self._message
-        if msg is not None:
-            if msg.until is not None and now_m >= msg.until:
-                self._message = None
-                self._shown = _Shown()
-            else:
-                return msg.page, "Message", False
+        # Who gets the panel: short notes, on air, stopwatch feedback, your own sign or message, meeting
+        # reminder, focus timer, Teams status light, rotation.
         if self.ctx.attention is not None and now_m < self._attention_until:
             return ATTENTION_TAKEOVER, "Claude needs attention", False
         if self._alert is not None and now_m >= self._alert_until:
@@ -682,14 +715,23 @@ class Engine:
             self._alert_until = now_m + seconds
         if self._alert is not None:
             return self._alert, f"Note: {self._alert['title']}", False
+        if self.ctx.on_air:
+            return ON_AIR_PAGE, "On air", False
+        if now_m < self._peek_until:
+            return STOPWATCH_PAGE, "Stopwatch", False
+        msg = self._message
+        if msg is not None:
+            if msg.until is not None and now_m >= msg.until:
+                self._message = None
+                self._shown = _Shown()
+            else:
+                return msg.page, MESSAGE_LABEL, False
         cal = cfg.get("calendar", {})
         meeting = self.ctx.meeting
         if cal.get("enabled") and meeting and int(cal.get("remind_minutes", 0)) > 0:
             left = (meeting.start - datetime.now(timezone.utc)).total_seconds()
             if 0 <= left <= int(cal["remind_minutes"]) * 60:
                 return REMINDER_PAGE, "Meeting reminder", False
-        if self.ctx.on_air:
-            return ON_AIR_PAGE, "On air", False
         if self.focus.phase and cfg["focus"].get("takeover", True):
             return FOCUS_PAGE, "Focus timer", False
         teams = cfg["teams"]
@@ -787,7 +829,10 @@ class Engine:
                     self._publish()
             except Exception as err:  # noqa: BLE001
                 log.warning("send failed: %s", err)
-                self.status.error = f"Sending failed: {err}"
+                self.status.error = f"Sending failed: {err or err.__class__.__name__}"
+                self._publish()
+                if isinstance(err, TimeoutError):  # the panel does not answer: connect again
+                    await self.client.disconnect()
         if self.status.showing != label:
             log.info("showing: %s", label)
             self.status.showing = label

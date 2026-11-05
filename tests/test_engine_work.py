@@ -88,12 +88,15 @@ def test_priorities():
     assert e._choose(e.config, 1.0)[2] is True  # status light
     e.focus.start(1.0, 25)
     assert e._choose(e.config, 2.0)[0]["type"] == "focus"  # focus beats the status light
-    e.ctx.on_air = True
-    assert e._choose(e.config, 3.0)[0]["type"] == "on_air"  # on air beats focus
-    e.push_alert("CI failed", "repo")
-    assert e._choose(e.config, 4.0)[0]["type"] == "alert"  # a note beats on air
     e.show_message(config.new_page("text"), None)
-    assert e._choose(e.config, 5.0)[1] == "Message"  # your own message beats everything
+    assert e._choose(e.config, 3.0)[1] == "Door sign / message"  # your sign beats focus and the status light
+    e.ctx.on_air = True
+    assert e._choose(e.config, 4.0)[0]["type"] == "on_air"  # on air beats a sign
+    e.push_alert("CI failed", "repo", seconds=10)
+    assert e._choose(e.config, 5.0)[0]["type"] == "alert"  # a short note beats on air
+    assert e._choose(e.config, 16.0)[0]["type"] == "on_air"
+    e.ctx.on_air = False
+    assert e._choose(e.config, 17.0)[1] == "Door sign / message"  # the sign comes back
 
 
 def test_focus_without_takeover_leaves_the_rotation_alone():

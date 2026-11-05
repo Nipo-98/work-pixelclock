@@ -41,24 +41,51 @@ def _app_keys(root: str):
                 yield f"{root}\\{name}"
 
 
-def capability_in_use(capability: str) -> bool:
-    """Windows notes per app when it last used the mic/camera; stop time 0 means: right now."""
+def apps_using(capability: str) -> list[str]:
+    """Registry names of the apps using the mic/camera: Windows notes per app when it last used it,
+    and a stop time of 0 means right now."""
+    apps = []
     try:
         for path in _app_keys(f"{_CONSENT}\\{capability}"):
             with winreg.OpenKey(winreg.HKEY_CURRENT_USER, path) as app:
                 try:
                     if winreg.QueryValueEx(app, "LastUsedTimeStop")[0] == 0 \
                             and winreg.QueryValueEx(app, "LastUsedTimeStart")[0] != 0:
-                        return True
+                        apps.append(path.rsplit("\\", 1)[-1])
                 except OSError:
                     continue
     except OSError:
         pass
-    return False
+    return apps
+
+
+def still_running(app: str, process_names: set[str]) -> bool:
+    """A program that crashed mid-call never writes its stop time: it must not stay on air forever.
+    Desktop programs are named by path (C:#…#x.exe) and can be checked; store apps cannot."""
+    if "#" not in app:
+        return True
+    return app.rsplit("#", 1)[-1].lower() in process_names
+
+
+def app_label(app: str) -> str:
+    """Readable name: Zoom from C:#…#Zoom.exe, MSTeams from MSTeams_8wekyb3d8bbwe."""
+    name = app.rsplit("#", 1)[-1]
+    return name[:-4] if name.lower().endswith(".exe") else name.split("_", 1)[0]
+
+
+def on_air_users(mic: bool = True, camera: bool = True) -> list[str]:
+    """Names of the apps that use the watched devices right now."""
+    apps = (apps_using("microphone") if mic else []) + (apps_using("webcam") if camera else [])
+    if not apps:
+        return []
+    import psutil
+
+    names = {(p.info["name"] or "").lower() for p in psutil.process_iter(["name"])}
+    return sorted({app_label(a) for a in apps if still_running(a, names)})
 
 
 def on_air(mic: bool = True, camera: bool = True) -> bool:
-    return (mic and capability_in_use("microphone")) or (camera and capability_in_use("webcam"))
+    return bool(on_air_users(mic, camera))
 
 
 # --- PC --------------------------------------------------------------------------------------------

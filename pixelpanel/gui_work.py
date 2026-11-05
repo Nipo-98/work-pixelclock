@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import time
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTime, QTimer
@@ -75,20 +76,26 @@ class WorkSections:
         row.addWidget(self.watch_status)
         row.addStretch(1)
         form.addRow(row)
-        form.addRow(_hint("Add the Stopwatch page under Pages to see it in the rotation. It counts until you stop it "
-                          "and starts at zero when the app restarts."))
+        form.addRow(_hint("It shows up on the panel when you start or stop it and stays in the rotation while it runs "
+                          "– tick the Stopwatch page to keep it there when stopped. Starts at zero when the app restarts."))
         lay.addWidget(box)
 
         box = QGroupBox("Door sign")
-        row = QHBoxLayout(box)
+        outer = QVBoxLayout(box)
+        row = QHBoxLayout()
         for sign in self.cfg.get("signs", []):
             b = QPushButton(sign)
             b.clicked.connect(lambda _=False, s=sign: self._show_sign(s))
             row.addWidget(b)
-        clear = QPushButton("Take it down")
-        clear.clicked.connect(self.engine.clear_message)
-        row.addWidget(clear)
+        self.sign_clear = QPushButton("Take it down")
+        self.sign_clear.clicked.connect(self.engine.clear_message)
+        row.addWidget(self.sign_clear)
         row.addStretch(1)
+        outer.addLayout(row)
+        self.sign_status = _status()
+        outer.addWidget(self.sign_status)
+        outer.addWidget(_hint("A sign stays until you take it down, press Next page or start the focus timer. "
+                              "Notes from Clawd and On air show over it; afterwards it comes back."))
         lay.addWidget(box)
 
         box = QGroupBox("On air")
@@ -99,6 +106,8 @@ class WorkSections:
         row.addWidget(self._check("on_air", "camera", "Camera"))
         row.addStretch(1)
         form.addRow("Watch", row)
+        self.air_status = _status()
+        form.addRow("Now", self.air_status)
         form.addRow(_hint("Works with any app (Teams, Zoom, browser), read from Windows' privacy data. Windows only "
                           "tells that the microphone is in use – not whether you are muted."))
         lay.addWidget(box)
@@ -122,6 +131,7 @@ class WorkSections:
         lay.addWidget(box)
         lay.addStretch(1)
 
+        self._stuck_shown = False
         self._timer_tick = QTimer(self, interval=1000, timeout=self._update_timers)
         self._timer_tick.start()
         return w
@@ -145,19 +155,33 @@ class WorkSections:
         self.engine.show_message(page, None)
 
     def _update_timers(self) -> None:
-        import time
-
         now = time.monotonic()
         focus = self.engine.focus
+        showing = self.engine.status.showing
         if focus.phase:
             self.focus_button.setText("Stop")
-            self.focus_status.setText(f"{focus.phase.capitalize()}: {work.clock_text(focus.remaining(now))} left")
+            text = f"{focus.phase.capitalize()}: {work.clock_text(focus.remaining(now))} left"
+            if self.cfg["focus"].get("takeover", True) and showing not in ("", "Focus timer"):
+                text += f" – right now the panel shows: {showing}"
+            self.focus_status.setText(text)
         else:
             self.focus_button.setText("Start focus")
             self.focus_status.setText("Not running")
         watch = self.engine.stopwatch
         self.watch_button.setText("Stop" if watch.running else "Start")
         self.watch_status.setText(work.clock_text(watch.elapsed(now)))
+        message = self.engine._message
+        self.sign_clear.setEnabled(message is not None)
+        self.sign_status.setText(f"Showing: {message.page.get('text', '')}" if message else "No sign is up")
+        self.hold_button.setVisible(message is not None)
+        self.air_status.setText(self.engine.status.on_air or ("Off" if not self.cfg["on_air"].get("enabled") else "Checking …"))
+        if self.engine.report_if_stuck() and not self._stuck_shown:
+            self._stuck_shown = True
+            self.error_label.setText("The panel control does not respond. Details are in the log; restart the app if it stays.")
+            self.error_label.show()
+        elif self._stuck_shown and time.monotonic() - self.engine.last_tick < 5:
+            self._stuck_shown = False
+            self.error_label.hide()
 
     # --- section: connections ----------------------------------------------------------------------
 
